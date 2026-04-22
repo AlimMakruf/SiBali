@@ -5,11 +5,13 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config/config');
 const UserModel = require('../models/userModel');
+const TokenBlacklistModel = require('../models/tokenBlacklistModel');
 
 /**
  * Middleware to verify JWT token.
  * Extracts token from header: Authorization: Bearer <token>
  * If valid, sets req.user with user data from Supabase.
+ * Also sets req.tokenPayload with the full decoded JWT payload (includes jti, exp).
  */
 async function authMiddleware(req, res, next) {
     try {
@@ -27,6 +29,17 @@ async function authMiddleware(req, res, next) {
         // Verify token
         const decoded = jwt.verify(token, config.jwt.secret);
 
+        // Check if token is blacklisted (logged out)
+        if (decoded.jti) {
+            const isBlacklisted = await TokenBlacklistModel.isBlacklisted(decoded.jti);
+            if (isBlacklisted) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Token has been revoked. Please log in again.',
+                });
+            }
+        }
+
         // Find user in Supabase
         const user = await UserModel.findById(decoded.id);
         if (!user) {
@@ -37,6 +50,7 @@ async function authMiddleware(req, res, next) {
         }
 
         req.user = user;
+        req.tokenPayload = decoded; // Expose jti, exp, etc. to controllers
         next();
     } catch (error) {
         if (error.name === 'TokenExpiredError') {

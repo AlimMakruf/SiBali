@@ -22,7 +22,10 @@
 
 ## ✨ Features
 
-- **User Authentication** — Register and login with JWT-based session management
+- **User Authentication** — Register, login, refresh token, and logout with dual JWT token management
+- **Token Management** — Short-lived access tokens (15m) + long-lived refresh tokens (7d) for secure sessions
+- **Check User** — Verify if JWT is active and retrieve authenticated user data
+- **Token Blacklisting** — Secure logout by invalidating tokens before expiry
 - **Trending Places** — Get AI-generated trending/viral tourist places in Bali
 - **Smart Search** — Search for tourism recommendations by keyword, category, and budget
 - **Response Caching** — 30-minute TTL cache to avoid redundant AI calls
@@ -61,14 +64,15 @@ SiBali/
     │   ├── config.js                # Centralized config from env vars
     │   └── supabase.js              # Supabase client initialization
     ├── controllers/
-    │   ├── authController.js        # Handles register & login requests
+    │   ├── authController.js        # Handles register, login, refresh, me, logout
     │   └── recommendationController.js  # Handles trending & search requests
     ├── middlewares/
-    │   ├── authMiddleware.js        # JWT verification middleware
+    │   ├── authMiddleware.js        # JWT verification + blacklist check middleware
     │   ├── errorHandler.js          # Global error handler
     │   └── validator.js             # Input validation rules
     ├── models/
     │   ├── userModel.js             # User table operations (CRUD)
+    │   ├── tokenBlacklistModel.js   # Token blacklist table operations
     │   ├── searchCacheModel.js      # Search cache table operations
     │   ├── searchHistoryModel.js    # Search history table operations
     │   └── trendingPlaceModel.js    # Trending places table operations
@@ -76,7 +80,7 @@ SiBali/
     │   ├── authRoutes.js            # Auth route definitions
     │   └── recommendationRoutes.js  # Recommendation route definitions (protected)
     └── services/
-        ├── authService.js           # Auth business logic (hash, token, verify)
+        ├── authService.js           # Auth business logic (hash, token, refresh, logout)
         └── geminiService.js         # Gemini AI integration + caching logic
 ```
 
@@ -94,15 +98,15 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
 - **`supabase.js`** — Initializes the Supabase client using the URL and service key from config. Warns if credentials are missing.
 
 ### Routes (`src/routes/`)
-- **`authRoutes.js`** — Maps `POST /register` and `POST /login` to the auth controller, applying validation rules before each handler.
+- **`authRoutes.js`** — Maps `POST /register`, `POST /login`, `POST /refresh-token`, `GET /me`, and `POST /logout` to the auth controller. Protected routes use `authMiddleware`.
 - **`recommendationRoutes.js`** — All routes require JWT authentication (`authMiddleware`). Maps `GET /trending` and `POST /search` to the recommendation controller.
 
 ### Controllers (`src/controllers/`)
-- **`authController.js`** — Receives validated request data, calls `authService`, and returns JSON responses for register (201) and login (200).
+- **`authController.js`** — Receives validated request data, calls `authService`, and returns JSON responses for register (201), login (200), refresh token (200), check user (200), and logout (200).
 - **`recommendationController.js`** — Calls `geminiService` for trending places and search recommendations. Includes the `source` field (`database`/`gemini`/`cache`) in responses.
 
 ### Services (`src/services/`)
-- **`authService.js`** — Handles password hashing with bcrypt (10 salt rounds), user creation via `UserModel`, password verification on login, and JWT generation.
+- **`authService.js`** — Handles password hashing with bcrypt (10 salt rounds), user creation via `UserModel`, password verification on login, dual JWT generation (access + refresh tokens), token refresh, token blacklisting on logout, and user check.
 - **`geminiService.js`** — Core AI integration:
   - `getTrendingPlaces()` — Checks `trending_places` table first; if empty, queries Gemini for 10 trending Bali spots, saves them, and returns the results.
   - `searchRecommendations()` — Checks `search_caches` by keyword; if valid cache exists (< 30 min), uses it; otherwise queries Gemini with keyword/category/budget, caches the response, and records search history.
@@ -110,13 +114,14 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
 ### Models (`src/models/`)
 Each model wraps Supabase queries for a specific table:
 - **`userModel.js`** — `create`, `findByEmail`, `findById` on the `users` table. Handles duplicate email detection (SQL error code `23505`).
+- **`tokenBlacklistModel.js`** — `add`, `isBlacklisted`, `cleanupExpired` on the `token_blacklist` table. Used for logout token invalidation.
 - **`searchCacheModel.js`** — `findByKeyword` (with TTL check), `upsert` on the `search_caches` table.
 - **`searchHistoryModel.js`** — `create`, `findByUserId` on the `search_histories` table.
 - **`trendingPlaceModel.js`** — `getActive`, `bulkUpsert` (deactivates old records, inserts new batch) on the `trending_places` table.
 
 ### Middlewares (`src/middlewares/`)
-- **`authMiddleware.js`** — Extracts JWT from `Authorization: Bearer <token>`, verifies it, fetches the user from Supabase, and sets `req.user`. Handles expired/invalid tokens.
-- **`validator.js`** — Defines validation rule sets (`registerRules`, `loginRules`, `searchRules`) using `express-validator`. Returns structured 400 errors on validation failure.
+- **`authMiddleware.js`** — Extracts JWT from `Authorization: Bearer <token>`, verifies it, checks the token blacklist, fetches the user from Supabase, and sets `req.user` and `req.tokenPayload` (includes `jti`, `exp`). Handles expired/invalid/revoked tokens.
+- **`validator.js`** — Defines validation rule sets (`registerRules`, `loginRules`, `searchRules`, `refreshTokenRules`) using `express-validator`. Returns structured 400 errors on validation failure.
 - **`errorHandler.js`** — Catches all errors and returns a consistent JSON response. In `development` mode, includes the error stack trace.
 
 ---
@@ -165,9 +170,13 @@ Create a `.env` file in the project root (use `.env.example` as a template):
 PORT=5000
 NODE_ENV=development
 
-# JWT — used for signing authentication tokens
+# JWT — Access Token (short-lived)
 JWT_SECRET=your_jwt_secret_key_here
-JWT_EXPIRES_IN=7d
+JWT_EXPIRES_IN=15m
+
+# JWT — Refresh Token (long-lived)
+JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_here
+JWT_REFRESH_EXPIRES_IN=7d
 
 # Google Gemini API — powers AI recommendations
 GEMINI_API_KEY=your_gemini_api_key_here
@@ -177,15 +186,17 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_supabase_service_role_key_here
 ```
 
-| Variable               | Description                                                   |
-| ---------------------- | ------------------------------------------------------------- |
-| `PORT`                 | Server port (default `5000`)                                  |
-| `NODE_ENV`             | `development` or `production`                                 |
-| `JWT_SECRET`           | Secret key for signing JWTs — use a strong random string      |
-| `JWT_EXPIRES_IN`       | Token expiry duration (e.g. `7d`, `24h`)                      |
-| `GEMINI_API_KEY`       | Your Google Gemini API key                                    |
-| `SUPABASE_URL`         | Your Supabase project URL                                     |
-| `SUPABASE_SERVICE_KEY` | Your Supabase service role key (found in Project Settings → API) |
+| Variable                 | Description                                                     |
+| ------------------------ | --------------------------------------------------------------- |
+| `PORT`                   | Server port (default `5000`)                                    |
+| `NODE_ENV`               | `development` or `production`                                   |
+| `JWT_SECRET`             | Secret key for signing access tokens — use a strong random string |
+| `JWT_EXPIRES_IN`         | Access token expiry duration (default `15m`)                    |
+| `JWT_REFRESH_SECRET`     | Secret key for signing refresh tokens — must differ from `JWT_SECRET` |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry duration (default `7d`)                    |
+| `GEMINI_API_KEY`         | Your Google Gemini API key                                      |
+| `SUPABASE_URL`           | Your Supabase project URL                                       |
+| `SUPABASE_SERVICE_KEY`   | Your Supabase service role key (found in Project Settings → API)  |
 
 ---
 
@@ -232,6 +243,18 @@ CREATE TABLE search_histories (
     cache_id UUID REFERENCES search_caches(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- 5. Token blacklist table (for logout invalidation)
+CREATE TABLE token_blacklist (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    token_jti VARCHAR(255) UNIQUE NOT NULL,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookup during auth middleware check
+CREATE INDEX idx_token_blacklist_jti ON token_blacklist(token_jti);
 ```
 
 ---
@@ -246,10 +269,15 @@ CREATE TABLE search_histories (
 
 ### Authentication
 
-| Method | Endpoint              | Auth | Description       |
-| ------ | --------------------- | ---- | ----------------- |
-| POST   | `/api/auth/register`  | No   | Register new user |
-| POST   | `/api/auth/login`     | No   | Login user        |
+| Method | Endpoint                       | Auth | Description                           |
+| ------ | ------------------------------ | ---- | ------------------------------------- |
+| POST   | `/api/auth/register`           | No   | Register new user                     |
+| POST   | `/api/auth/login`              | No   | Login user                            |
+| POST   | `/api/auth/refresh-token`      | No*  | Refresh access token                  |
+| GET    | `/api/auth/me`                 | Yes  | Check JWT & get user data             |
+| POST   | `/api/auth/logout`             | Yes  | Invalidate tokens (logout)            |
+
+> \* Refresh token is sent in the request body, not via Authorization header.
 
 ### Recommendations (Protected — requires JWT)
 
@@ -288,7 +316,8 @@ curl -X POST http://localhost:5000/api/auth/register \
       "email": "john@example.com",
       "created_at": "2026-03-14T..."
     },
-    "token": "eyJhbGciOiJIUzI1NiIs..."
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
@@ -311,18 +340,85 @@ curl -X POST http://localhost:5000/api/auth/login \
   "message": "Login successful",
   "data": {
     "user": { "id": "uuid", "name": "John Doe", "email": "john@example.com" },
-    "token": "eyJhbGciOiJIUzI1NiIs..."
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
   }
 }
 ```
 
-> **Save the `token`** — you need it for all recommendation endpoints.
+> **Save both tokens** — `accessToken` is used in the `Authorization` header for protected endpoints. `refreshToken` is used to get a new access token when it expires.
 
-### 3. Get Trending Places
+### 3. Refresh Token
+
+```bash
+curl -X POST http://localhost:5000/api/auth/refresh-token \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "YOUR_REFRESH_TOKEN_HERE"
+  }'
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Token refreshed successfully",
+  "data": {
+    "user": { "id": "uuid", "name": "John Doe", "email": "john@example.com" },
+    "accessToken": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+### 4. Check User (Me)
+
+```bash
+curl http://localhost:5000/api/auth/me \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE"
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "User is authenticated",
+  "data": {
+    "user": {
+      "id": "uuid",
+      "name": "John Doe",
+      "email": "john@example.com",
+      "created_at": "2026-03-14T..."
+    }
+  }
+}
+```
+
+### 5. Logout
+
+```bash
+curl -X POST http://localhost:5000/api/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refreshToken": "YOUR_REFRESH_TOKEN_HERE"
+  }'
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Logout successful"
+}
+```
+
+> After logout, both the access token and refresh token will be invalidated. Any subsequent requests using these tokens will return `401`.
+
+### 6. Get Trending Places
 
 ```bash
 curl http://localhost:5000/api/recommendations/trending \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE"
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE"
 ```
 
 **Response (200):**
@@ -344,12 +440,12 @@ curl http://localhost:5000/api/recommendations/trending \
 
 > The `source` field will be `"database"` on subsequent calls (cached), or `"gemini"` on first call.
 
-### 4. Search Recommendations
+### 7. Search Recommendations
 
 ```bash
 curl -X POST http://localhost:5000/api/recommendations/search \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE" \
   -d '{
     "keyword": "hidden waterfall",
     "category": "Alam",
@@ -429,14 +525,16 @@ vercel --prod
 
 In your Vercel project dashboard, go to **Settings → Environment Variables** and add:
 
-| Variable               | Value                                    |
-| ---------------------- | ---------------------------------------- |
-| `JWT_SECRET`           | Your strong secret key                   |
-| `JWT_EXPIRES_IN`       | `7d`                                     |
-| `GEMINI_API_KEY`       | Your Google Gemini API key               |
-| `SUPABASE_URL`         | `https://your-project.supabase.co`       |
-| `SUPABASE_SERVICE_KEY` | Your Supabase service role key           |
-| `NODE_ENV`             | `production`                             |
+| Variable                 | Value                                    |
+| ------------------------ | ---------------------------------------- |
+| `JWT_SECRET`             | Your strong secret key                   |
+| `JWT_EXPIRES_IN`         | `15m`                                    |
+| `JWT_REFRESH_SECRET`     | Your strong refresh secret key           |
+| `JWT_REFRESH_EXPIRES_IN` | `7d`                                     |
+| `GEMINI_API_KEY`         | Your Google Gemini API key               |
+| `SUPABASE_URL`           | `https://your-project.supabase.co`       |
+| `SUPABASE_SERVICE_KEY`   | Your Supabase service role key           |
+| `NODE_ENV`               | `production`                             |
 
 > **Note:** `PORT` is not needed on Vercel — the platform manages it automatically.
 

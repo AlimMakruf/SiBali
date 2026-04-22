@@ -34,6 +34,9 @@ app.get('/', (req, res) => {
             auth: {
                 register: 'POST /api/auth/register',
                 login: 'POST /api/auth/login',
+                refreshToken: 'POST /api/auth/refresh-token',
+                me: 'GET  /api/auth/me',
+                logout: 'POST /api/auth/logout',
             },
             recommendations: {
                 trending: 'GET  /api/recommendations/trending',

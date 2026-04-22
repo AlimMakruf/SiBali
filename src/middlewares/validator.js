@@ -80,8 +80,17 @@ const searchRules = [
     handleValidationErrors,
 ];
 
+const refreshTokenRules = [
+    body('refreshToken')
+        .trim()
+        .notEmpty()
+        .withMessage('Refresh token is required'),
+    handleValidationErrors,
+];
+
 module.exports = {
     registerRules,
     loginRules,
     searchRules,
+    refreshTokenRules,
 };

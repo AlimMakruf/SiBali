@@ -10,11 +10,15 @@ const UserModel = {
      * @param {{ name: string, email: string, password_hash: string }} data
      * @returns {object} user without password_hash
      */
-    async create({ name, email, password_hash }) {
+    async create({ name, email, password_hash, date_of_birth, nationality }) {
+        const row = { name, email, password_hash };
+        if (date_of_birth) row.date_of_birth = date_of_birth;
+        if (nationality) row.nationality = nationality;
+
         const { data, error } = await supabase
             .from('users')
-            .insert({ name, email, password_hash })
-            .select('id, name, email, created_at')
+            .insert(row)
+            .select('id, name, email, date_of_birth, nationality, created_at')
             .single();
 
         if (error) {
@@ -38,7 +42,7 @@ const UserModel = {
     async findByEmail(email) {
         const { data, error } = await supabase
             .from('users')
-            .select('id, name, email, password_hash, created_at')
+            .select('id, name, email, password_hash, date_of_birth, nationality, created_at')
             .eq('email', email.toLowerCase())
             .single();
 
@@ -59,7 +63,7 @@ const UserModel = {
     async findById(id) {
         const { data, error } = await supabase
             .from('users')
-            .select('id, name, email, created_at')
+            .select('id, name, email, date_of_birth, nationality, created_at')
             .eq('id', id)
             .single();
 
@@ -68,6 +72,30 @@ const UserModel = {
         }
         if (error) throw error;
 
+        return data;
+    },
+
+    /**
+     * Update user profile fields.
+     * @param {string} id
+     * @param {object} fields — { name, date_of_birth, nationality }
+     * @returns {object} updated user
+     */
+    async updateProfile(id, fields) {
+        const allowed = ['name', 'date_of_birth', 'nationality'];
+        const updates = {};
+        for (const key of allowed) {
+            if (fields[key] !== undefined) updates[key] = fields[key];
+        }
+
+        const { data, error } = await supabase
+            .from('users')
+            .update(updates)
+            .eq('id', id)
+            .select('id, name, email, date_of_birth, nationality, created_at')
+            .single();
+
+        if (error) throw error;
         return data;
     },
 };

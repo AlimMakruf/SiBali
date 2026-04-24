@@ -279,12 +279,13 @@ CREATE INDEX idx_token_blacklist_jti ON token_blacklist(token_jti);
 
 > \* Refresh token is sent in the request body, not via Authorization header.
 
-### Recommendations (Protected — requires JWT)
+### Discovery & Recommendations (Protected — requires JWT)
 
-| Method | Endpoint                        | Auth | Description                        |
-| ------ | ------------------------------- | ---- | ---------------------------------- |
-| GET    | `/api/recommendations/trending` | Yes  | Get trending tourist places        |
-| POST   | `/api/recommendations/search`   | Yes  | Search recommendations by keyword  |
+| Method | Endpoint                              | Auth | Description                        |
+| ------ | ------------------------------------- | ---- | ---------------------------------- |
+| GET    | `/api/recommendations/trending`       | Yes  | Get trending tourist places        |
+| POST   | `/api/recommendations/search`         | Yes  | Search recommendations by keyword  |
+| POST   | `/api/discovery/generate-itinerary`   | Yes  | Generate AI-powered itinerary      |
 
 ---
 
@@ -481,6 +482,60 @@ curl -X POST http://localhost:5000/api/recommendations/search \
 ```
 
 > The `source` field will be `"cache"` if the same keyword was searched within the last 30 minutes.
+
+### 8. Generate AI Itinerary
+
+```bash
+curl -X POST http://localhost:5000/api/discovery/generate-itinerary \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN_HERE" \
+  -d '{
+    "durationDays": 3,
+    "durationNights": 2,
+    "interests": ["Beach", "Culture", "Culinary"],
+    "budgetRange": "Moderate",
+    "adults": 2,
+    "children": 0,
+    "area": "Ubud",
+    "specialRequests": "Vegetarian food"
+  }'
+```
+
+| Field               | Type     | Required | Description                                                    |
+| ------------------- | -------- | -------- | -------------------------------------------------------------- |
+| `durationDays`      | integer  | Yes      | Number of days (1-14)                                          |
+| `durationNights`    | integer  | No       | Number of nights                                               |
+| `interests`         | array    | Yes      | Array of interest categories (e.g. `Beach`, `Culture`)         |
+| `budgetRange`       | string   | Yes      | One of: `Budget`, `Moderate`, `Luxury`                         |
+| `adults`            | integer  | Yes      | Number of adults (min 1)                                       |
+| `children`          | integer  | No       | Number of children                                             |
+| `area`              | string   | No       | Specific area in Bali (e.g. `Ubud`, `Canggu`)                  |
+| `specialRequests`   | string   | No       | Special requests (e.g. `Wheelchair accessible`)                |
+| `customPreferences` | string   | No       | Any other custom preferences                                   |
+
+**Response (201):**
+```json
+{
+  "status": "success",
+  "message": "Itinerary generated successfully",
+  "data": {
+    "id": "uuid-here",
+    "title": "3 Days in Ubud",
+    "status": "published",
+    "duration_days": 3,
+    "duration_nights": 2,
+    "itinerary_destinations": [
+      {
+        "day_number": 1,
+        "time_slot": "Morning",
+        "destination": {
+          "name": "Sacred Monkey Forest Sanctuary"
+        }
+      }
+    ]
+  }
+}
+```
 
 ---
 

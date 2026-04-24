@@ -42,9 +42,10 @@ const authService = {
      * @param {string} name
      * @param {string} email
      * @param {string} password
+     * @param {object} [extras] — optional fields { date_of_birth, nationality }
      * @returns {{ user: object, accessToken: string, refreshToken: string }}
      */
-    async register(name, email, password) {
+    async register(name, email, password, extras = {}) {
         // Hash password
         const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
 
@@ -53,6 +54,8 @@ const authService = {
             name,
             email: email.toLowerCase(),
             password_hash,
+            date_of_birth: extras.date_of_birth,
+            nationality: extras.nationality,
         });
 
         // Generate tokens

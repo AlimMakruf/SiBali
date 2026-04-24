@@ -1,12 +1,13 @@
 // ------------------------------------------------------------
 // Gemini Service — Google Gemini API Integration + Supabase Cache
+// Updated: now uses destinations table instead of trending_places
 // ------------------------------------------------------------
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const config = require('../config/config');
 const SearchCacheModel = require('../models/searchCacheModel');
 const SearchHistoryModel = require('../models/searchHistoryModel');
-const TrendingPlaceModel = require('../models/trendingPlaceModel');
+const DestinationModel = require('../models/destinationModel');
 
 /**
  * Initialize Gemini client.
@@ -55,37 +56,55 @@ async function askGemini(prompt) {
 const geminiService = {
     /**
      * Get a list of trending/viral tourist places in Bali.
-     * 1) Check the trending_places table (is_active = true)
+     * 1) Check the destinations table (is_trending = true)
      * 2) If empty, call Gemini and save to DB
      */
     async getTrendingPlaces() {
         // Check from database first
-        const existing = await TrendingPlaceModel.getActive();
+        const existing = await DestinationModel.getTrending();
         if (existing && existing.length > 0) {
             return { source: 'database', data: existing };
         }
 
         // No active data — call Gemini
-        const prompt = `
-You are a Bali tourism expert. Provide 10 tourist places that are currently trending/viral in Bali.
+        const prompt = `You are the AI recommendation engine for a Bali tourism application named SIBALI.
 
-Return ONLY in the following JSON array format, without any additional explanation:
-[
-  {
-    "name": "Place Name",
-    "description": "Brief description of why this place is trending",
-    "category": "Beach/Temple/Nature/Culture/Culinary/Adventure",
-    "gmaps_url": "https://maps.google.com/..."
-  }
-]
-    `.trim();
+        Your task is to act as a local expert and provide 10 tourist places that are currently trending/viral in Bali.
+
+        Return ONLY a valid JSON array of 10 objects with the exact following structure and keys. Do not include markdown formatting like \`\`\`json or any conversational text outside the JSON block. Ensure the geographical data (latitude, longitude, and map URL) is as accurate as possible.
+
+        [
+        {
+            "destinationName": "String (The name of the location)",
+            "category": "String (e.g., Temple, Beach, Waterfall)",
+            "rating": "Number (A realistic rating between 4.0 and 5.0)",
+            "reviewCount": "Number (A realistic number of reviews)",
+            "aiInsight": "String (A short, engaging paragraph of 2-3 sentences. Focus on the best time to visit, photography tips, and unique experiences. Write it in an inviting tone.)",
+            "about": "String (A factual, brief description of the location's history and significance.)",
+            "contactInfo": {
+            "location": "String (The general address, e.g., Beraban, Tabanan Regency, Bali)",
+            "hours": "String (e.g., 'Open until 6:00 PM')",
+            "phone": "String (Contact number, or null if generally unavailable)",
+            "website": "String (Official website domain, or null if unavailable)"
+            },
+            "coordinates": {
+            "latitude": "Number (The exact latitude of the destination)",
+            "longitude": "Number (The exact longitude of the destination)"
+            },
+            "gmapsUrl": "String (A direct, clickable Google Maps URL for the location, e.g., 'https://www.google.com/maps/search/?api=1&query=latitude,longitude' or a direct place link)",
+            "amenities": [
+            "Array of Strings (e.g., 'Parking', 'WiFi', 'Guided Tours')"
+            ],
+            "imageCarouselCount": "Number (Default to 3)"
+        }
+        ]`.trim();
 
         const geminiData = await askGemini(prompt);
 
         // Save to database
         const places = Array.isArray(geminiData) ? geminiData : [];
         if (places.length > 0) {
-            const saved = await TrendingPlaceModel.bulkUpsert(places);
+            const saved = await DestinationModel.bulkUpsert(places);
             return { source: 'gemini', data: saved };
         }
 
@@ -117,29 +136,38 @@ Return ONLY in the following JSON array format, without any additional explanati
         }
 
         // 2) Cache miss — call Gemini
-        let prompt = `
-You are a Bali tourism expert. Provide tourist place recommendations in Bali based on the following criteria:
+        const prompt = `You are the AI recommendation engine for a Bali tourism application named SIBALI. I will provide you with the name of a destination or some basic raw information about a place in Bali. 
 
-Keyword: "${keyword}"`;
+        Your task is to act as a local expert and generate a comprehensive, structured JSON object to populate the "Destination Detail" screen in our React Native app.
 
-        if (category) prompt += `\nKategori: "${category}"`;
-        if (budget) prompt += `\nBudget: "${budget}"`;
+        Here is the destination information to process: 
+        "${keyword}"
 
-        prompt += `
+        Return ONLY a valid JSON object with the exact following structure and keys. Do not include markdown formatting like \`\`\`json or any conversational text outside the JSON block. Ensure the geographical data (latitude, longitude, and map URL) is as accurate as possible.
 
-Return ONLY in the following JSON array format (maximum 10 places), without any additional explanation:
-[
-  {
-    "name": "Place Name",
-    "location": "Regency/City",
-    "category": "Beach/Temple/Nature/Culture/Culinary/Adventure",
-    "description": "Brief description of the place and why it is recommended",
-    "rating": 4.5,
-    "estimatedBudget": "IDR 50,000 - IDR 100,000",
-    "tips": "Brief tips for visitors",
-    "gmaps_url": "https://maps.google.com/..."
-  }
-]`;
+        {
+        "destinationName": "String (The name of the location)",
+        "category": "String (e.g., Temple, Beach, Waterfall)",
+        "rating": "Number (A realistic rating between 4.0 and 5.0)",
+        "reviewCount": "Number (A realistic number of reviews)",
+        "aiInsight": "String (A short, engaging paragraph of 2-3 sentences. Focus on the best time to visit, photography tips, and unique experiences. Write it in an inviting tone.)",
+        "about": "String (A factual, brief description of the location's history and significance.)",
+        "contactInfo": {
+            "location": "String (The general address, e.g., Beraban, Tabanan Regency, Bali)",
+            "hours": "String (e.g., 'Open until 6:00 PM')",
+            "phone": "String (Contact number, or null if generally unavailable)",
+            "website": "String (Official website domain, or null if unavailable)"
+        },
+        "coordinates": {
+            "latitude": "Number (The exact latitude of the destination)",
+            "longitude": "Number (The exact longitude of the destination)"
+        },
+        "gmapsUrl": "String (A direct, clickable Google Maps URL for the location, e.g., 'https://www.google.com/maps/search/?api=1&query=latitude,longitude' or a direct place link)",
+        "amenities": [
+            "Array of Strings (e.g., 'Parking', 'WiFi', 'Guided Tours')"
+        ],
+        "imageCarouselCount": "Number (Default to 3)"
+        }`;
 
         const geminiData = await askGemini(prompt.trim());
 
@@ -153,6 +181,65 @@ Return ONLY in the following JSON array format (maximum 10 places), without any 
         await SearchHistoryModel.create(userId, normalizedKeyword, cacheRecord.id);
 
         return { source: 'gemini', data: geminiData };
+    },
+
+    /**
+     * Generate an AI itinerary based on discovery inputs.
+     * @param {object} inputs - The user's discovery step inputs
+     */
+    async generateItineraryFromDiscovery(inputs) {
+        const prompt = `You are the AI recommendation engine for a Bali tourism application named SIBALI.
+
+Your task is to generate a comprehensive, structured itinerary for a trip to Bali based on the following user preferences:
+
+- Duration: ${inputs.durationDays} days${inputs.durationNights ? `, ${inputs.durationNights} nights` : ''}
+- Interests: ${inputs.interests.join(', ')}
+- Budget Range: ${inputs.budgetRange || 'Not specified'}
+- Group: ${inputs.adults} adults${inputs.children ? `, ${inputs.children} children` : ''}
+- Preferred Area: ${inputs.area || 'Anywhere in Bali'}
+- Special Requests: ${inputs.specialRequests || 'None'}
+- Custom Preferences: ${inputs.customPreferences || 'None'}
+
+Return ONLY a valid JSON object with the exact following structure. Do not include markdown formatting like \`\`\`json or any conversational text.
+
+{
+  "title": "String (A catchy title for this itinerary)",
+  "description": "String (A short summary of the trip)",
+  "days": [
+    {
+      "dayNumber": "Number (e.g., 1)",
+      "items": [
+        {
+          "visitTime": "String (Suggested time, e.g., '09:00 AM')",
+          "notes": "String (Why this place fits the user's preferences)",
+          "destination": {
+            "destinationName": "String",
+            "category": "String",
+            "rating": "Number (Between 4.0 and 5.0)",
+            "reviewCount": "Number",
+            "aiInsight": "String (2-3 sentences)",
+            "about": "String",
+            "contactInfo": {
+              "location": "String",
+              "hours": "String",
+              "phone": "String (or null)",
+              "website": "String (or null)"
+            },
+            "coordinates": {
+              "latitude": "Number",
+              "longitude": "Number"
+            },
+            "gmapsUrl": "String",
+            "amenities": ["Array of Strings"],
+            "imageCarouselCount": "Number (Default 3)"
+          }
+        }
+      ]
+    }
+  ]
+}`;
+
+        return await askGemini(prompt.trim());
     },
 };
 

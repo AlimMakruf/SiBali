@@ -1,0 +1,394 @@
+{
+	"info": {
+		"name": "SiBali API v2.0",
+		"description": "SIBALI — Bali Tourism Recommendation System API",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"variable": [
+		{ "key": "baseUrl", "value": "http://localhost:5001/api" },
+		{ "key": "accessToken", "value": "" },
+		{ "key": "refreshToken", "value": "" },
+		{ "key": "destinationId", "value": "" },
+		{ "key": "itineraryId", "value": "" },
+		{ "key": "dayId", "value": "" },
+		{ "key": "itemId", "value": "" },
+		{ "key": "reviewId", "value": "" },
+		{ "key": "categoryId", "value": "" }
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [{ "key": "token", "value": "{{accessToken}}", "type": "string" }]
+	},
+	"item": [
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('accessToken', json.data.accessToken);", "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"body": { "mode": "raw", "raw": "{\n  \"name\": \"Test User\",\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\",\n  \"date_of_birth\": \"1995-06-15\",\n  \"nationality\": \"Indonesian\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] }
+					}
+				},
+				{
+					"name": "Login",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('accessToken', json.data.accessToken);", "  pm.collectionVariables.set('refreshToken', json.data.refreshToken);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"body": { "mode": "raw", "raw": "{\n  \"email\": \"test@example.com\",\n  \"password\": \"password123\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+					}
+				},
+				{
+					"name": "Refresh Token",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('accessToken', json.data.accessToken);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/auth/refresh-token", "host": ["{{baseUrl}}"], "path": ["auth", "refresh-token"] }
+					}
+				},
+				{
+					"name": "Me (Check Auth)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+					}
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Categories",
+			"item": [
+				{
+					"name": "Get All Categories",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data && json.data.length > 0) {", "  pm.collectionVariables.set('categoryId', json.data[0].id);", "}"] } }],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Destinations",
+			"item": [
+				{
+					"name": "List Destinations",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data && json.data.length > 0) {", "  pm.collectionVariables.set('destinationId', json.data[0].id);", "}"] } }],
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/destinations?limit=10&offset=0", "host": ["{{baseUrl}}"], "path": ["destinations"], "query": [{ "key": "limit", "value": "10" }, { "key": "offset", "value": "0" }, { "key": "categoryId", "value": "{{categoryId}}", "disabled": true }, { "key": "search", "value": "beach", "disabled": true }] }
+					}
+				},
+				{
+					"name": "Get Trending",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/destinations/trending?limit=10", "host": ["{{baseUrl}}"], "path": ["destinations", "trending"], "query": [{ "key": "limit", "value": "10" }] }
+					}
+				},
+				{
+					"name": "Get Destination Detail",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}"] }
+					}
+				},
+				{
+					"name": "Get Destination Reviews",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/reviews?limit=20&offset=0", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "reviews"], "query": [{ "key": "limit", "value": "20" }, { "key": "offset", "value": "0" }] }
+					}
+				},
+				{
+					"name": "Submit Review",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('reviewId', json.data.id);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"rating\": 4.5,\n  \"comment\": \"Amazing place! Highly recommended.\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/reviews", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "reviews"] }
+					}
+				},
+				{
+					"name": "Save Destination",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/save", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "save"] }
+					}
+				},
+				{
+					"name": "Unsave Destination",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/save", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "save"] }
+					}
+				},
+				{
+					"name": "Mark Visited",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/visited", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "visited"] }
+					}
+				},
+				{
+					"name": "Unmark Visited",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/destinations/{{destinationId}}/visited", "host": ["{{baseUrl}}"], "path": ["destinations", "{{destinationId}}", "visited"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "User Profile",
+			"item": [
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/profile", "host": ["{{baseUrl}}"], "path": ["users", "me", "profile"] }
+					}
+				},
+				{
+					"name": "Update Profile",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"name\": \"Updated Name\",\n  \"date_of_birth\": \"1995-06-15\",\n  \"nationality\": \"Indonesian\",\n  \"profile_photo\": \"https://example.com/photo.jpg\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/users/me/profile", "host": ["{{baseUrl}}"], "path": ["users", "me", "profile"] }
+					}
+				},
+				{
+					"name": "Set Interests",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"categoryIds\": [\n    \"{{categoryId}}\",\n    \"REPLACE_WITH_CATEGORY_ID_2\",\n    \"REPLACE_WITH_CATEGORY_ID_3\"\n  ]\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/users/me/interests", "host": ["{{baseUrl}}"], "path": ["users", "me", "interests"] }
+					}
+				},
+				{
+					"name": "Get Interests",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/interests", "host": ["{{baseUrl}}"], "path": ["users", "me", "interests"] }
+					}
+				},
+				{
+					"name": "Get Stats",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/stats", "host": ["{{baseUrl}}"], "path": ["users", "me", "stats"] }
+					}
+				},
+				{
+					"name": "Get Saved Destinations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/saved", "host": ["{{baseUrl}}"], "path": ["users", "me", "saved"] }
+					}
+				},
+				{
+					"name": "Get Visited Destinations",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/visited", "host": ["{{baseUrl}}"], "path": ["users", "me", "visited"] }
+					}
+				},
+				{
+					"name": "Get My Reviews",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/me/reviews", "host": ["{{baseUrl}}"], "path": ["users", "me", "reviews"] }
+					}
+				},
+				{
+					"name": "Delete Review",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/users/reviews/{{reviewId}}", "host": ["{{baseUrl}}"], "path": ["users", "reviews", "{{reviewId}}"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Itineraries",
+			"item": [
+				{
+					"name": "Create Itinerary",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('itineraryId', json.data.id);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"title\": \"Bali Cultural Adventure\",\n  \"startDate\": \"2026-05-01\",\n  \"durationDays\": 3,\n  \"durationNights\": 2,\n  \"budget\": 1500000\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/itineraries", "host": ["{{baseUrl}}"], "path": ["itineraries"] }
+					}
+				},
+				{
+					"name": "Get All Itineraries",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries", "host": ["{{baseUrl}}"], "path": ["itineraries"] }
+					}
+				},
+				{
+					"name": "Get Itinerary Detail",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries/{{itineraryId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "{{itineraryId}}"] }
+					}
+				},
+				{
+					"name": "Update Itinerary",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"title\": \"Updated Bali Trip\",\n  \"budget\": 2000000\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/itineraries/{{itineraryId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "{{itineraryId}}"] }
+					}
+				},
+				{
+					"name": "Delete Itinerary",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries/{{itineraryId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "{{itineraryId}}"] }
+					}
+				},
+				{
+					"name": "Add Day",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('dayId', json.data.id);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"dayNumber\": 1,\n  \"date\": \"2026-05-01\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/itineraries/{{itineraryId}}/days", "host": ["{{baseUrl}}"], "path": ["itineraries", "{{itineraryId}}", "days"] }
+					}
+				},
+				{
+					"name": "Get Days",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries/{{itineraryId}}/days", "host": ["{{baseUrl}}"], "path": ["itineraries", "{{itineraryId}}", "days"] }
+					}
+				},
+				{
+					"name": "Delete Day",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries/days/{{dayId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "days", "{{dayId}}"] }
+					}
+				},
+				{
+					"name": "Add Item to Day",
+					"event": [{ "listen": "test", "script": { "exec": ["var json = pm.response.json();", "if (json.data) {", "  pm.collectionVariables.set('itemId', json.data.id);", "}"] } }],
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"destinationId\": \"{{destinationId}}\",\n  \"visitTime\": \"09:00\",\n  \"orderInDay\": 1,\n  \"notes\": \"Arrive early for sunrise\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/itineraries/days/{{dayId}}/items", "host": ["{{baseUrl}}"], "path": ["itineraries", "days", "{{dayId}}", "items"] }
+					}
+				},
+				{
+					"name": "Update Item",
+					"request": {
+						"method": "PUT",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"visit_time\": \"10:00\",\n  \"notes\": \"Updated notes\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/itineraries/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "items", "{{itemId}}"] }
+					}
+				},
+				{
+					"name": "Delete Item",
+					"request": {
+						"method": "DELETE",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/itineraries/items/{{itemId}}", "host": ["{{baseUrl}}"], "path": ["itineraries", "items", "{{itemId}}"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Recommendations (Gemini AI)",
+			"item": [
+				{
+					"name": "Get Trending (AI)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": { "raw": "{{baseUrl}}/recommendations/trending", "host": ["{{baseUrl}}"], "path": ["recommendations", "trending"] }
+					}
+				},
+				{
+					"name": "Search Recommendations",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"keyword\": \"hidden waterfall\",\n  \"category\": \"Nature\",\n  \"budget\": \"IDR 50,000 - IDR 200,000\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/recommendations/search", "host": ["{{baseUrl}}"], "path": ["recommendations", "search"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Discovery",
+			"item": [
+				{
+					"name": "Generate AI Itinerary",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": { "mode": "raw", "raw": "{\n  \"durationDays\": 3,\n  \"durationNights\": 2,\n  \"interests\": [\"Beach\", \"Culture\", \"Nature\"],\n  \"budgetRange\": \"Moderate\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"area\": \"Ubud and Seminyak\",\n  \"specialRequests\": \"We love coffee and want to visit a nice cafe\",\n  \"customPreferences\": \"Avoid crowded places if possible\"\n}", "options": { "raw": { "language": "json" } } },
+						"url": { "raw": "{{baseUrl}}/discovery/generate-itinerary", "host": ["{{baseUrl}}"], "path": ["discovery", "generate-itinerary"] }
+					}
+				}
+			]
+		}
+	]
+}

@@ -3,39 +3,49 @@
 // Updated: now uses destinations table instead of trending_places
 // ------------------------------------------------------------
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const config = require('../config/config');
 const SearchCacheModel = require('../models/searchCacheModel');
 const SearchHistoryModel = require('../models/searchHistoryModel');
 const DestinationModel = require('../models/destinationModel');
 
 /**
- * Initialize Gemini client.
- * Will be null if API key is not set.
- */
-let genAI = null;
-let model = null;
-
-if (config.gemini.apiKey) {
-    genAI = new GoogleGenerativeAI(config.gemini.apiKey);
-    model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-}
-
-/**
- * Helper — send a prompt to Gemini and parse the JSON response.
+ * Helper — send a prompt to Gemini via OpenRouter and parse the JSON response.
  */
 async function askGemini(prompt) {
-    if (!model) {
+    if (!config.openrouter.apiKey) {
         const err = new Error(
-            'GEMINI_API_KEY is not configured. Add it to the .env file'
+            'OPENROUTER_API_KEY is not configured. Add it to the .env file'
         );
         err.statusCode = 503;
         throw err;
     }
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${config.openrouter.apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://sibali.com', // Optional, for OpenRouter rankings
+            'X-Title': 'SiBali', // Optional, for OpenRouter rankings
+        },
+        body: JSON.stringify({
+            model: 'google/gemini-2.5-flash',
+            messages: [
+                { role: 'user', content: prompt }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errText = await response.text();
+        console.error('OpenRouter API Error:', errText);
+        const err = new Error('Failed to generate content from AI via OpenRouter');
+        err.statusCode = response.status;
+        throw err;
+    }
+
+    const data = await response.json();
+    const text = data.choices?.[0]?.message?.content || '';
 
     // Gemini often returns markdown code-blocks, we strip them
     const jsonString = text

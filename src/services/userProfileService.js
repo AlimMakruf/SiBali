@@ -22,13 +22,13 @@ const userProfileService = {
         return UserModel.updateProfile(userId, fields);
     },
 
-    async setInterests(userId, categoryIds) {
-        if (!categoryIds || categoryIds.length < 3) {
+    async setInterests(userId, interestIds) {
+        if (!interestIds || interestIds.length < 3) {
             const err = new Error('Please select at least 3 interests');
             err.statusCode = 400;
             throw err;
         }
-        return UserInterestModel.setInterests(userId, categoryIds);
+        return UserInterestModel.setInterests(userId, interestIds);
     },
 
     async getInterests(userId) {

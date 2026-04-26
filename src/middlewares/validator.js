@@ -110,12 +110,12 @@ const reviewRules = [
 ];
 
 const interestRules = [
-    body('categoryIds')
+    body('interestIds')
         .isArray({ min: 3 })
         .withMessage('Please select at least 3 interests'),
-    body('categoryIds.*')
+    body('interestIds.*')
         .isUUID()
-        .withMessage('Each interest must be a valid category ID'),
+        .withMessage('Each interest must be a valid interest ID'),
     handleValidationErrors,
 ];
 

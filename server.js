@@ -14,6 +14,7 @@ const errorHandler = require('./src/middlewares/errorHandler');
 const authRoutes = require('./src/routes/authRoutes');
 const recommendationRoutes = require('./src/routes/recommendationRoutes');
 const categoryRoutes = require('./src/routes/categoryRoutes');
+const interestRoutes = require('./src/routes/interestRoutes');
 const destinationRoutes = require('./src/routes/destinationRoutes');
 const userRoutes = require('./src/routes/userRoutes');
 const itineraryRoutes = require('./src/routes/itineraryRoutes');
@@ -46,6 +47,9 @@ app.get('/', (req, res) => {
             },
             categories: {
                 list: 'GET  /api/categories',
+            },
+            interests: {
+                list: 'GET  /api/interests',
             },
             destinations: {
                 list: 'GET  /api/destinations',
@@ -96,6 +100,7 @@ app.get('/', (req, res) => {
 // ---------- Mount Routes ----------
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/interests', interestRoutes);
 app.use('/api/destinations', destinationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/itineraries', itineraryRoutes);

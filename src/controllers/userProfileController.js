@@ -24,8 +24,8 @@ const userProfileController = {
     /** POST /api/users/me/interests */
     async setInterests(req, res, next) {
         try {
-            const { categoryIds } = req.body;
-            const data = await userProfileService.setInterests(req.user.id, categoryIds);
+            const { interestIds } = req.body;
+            const data = await userProfileService.setInterests(req.user.id, interestIds);
             res.status(200).json({ success: true, message: 'Interests updated successfully', data });
         } catch (error) { next(error); }
     },

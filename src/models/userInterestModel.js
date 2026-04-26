@@ -9,10 +9,10 @@ const UserInterestModel = {
      * Set user interests (replace all existing).
      * Deletes old interests first, then inserts the new set.
      * @param {string} userId
-     * @param {string[]} categoryIds — array of category UUIDs
+     * @param {string[]} interestIds — array of interest UUIDs
      * @returns {object[]} inserted records
      */
-    async setInterests(userId, categoryIds) {
+    async setInterests(userId, interestIds) {
         // Delete existing interests for this user
         const { error: deleteError } = await supabase
             .from('user_interests')
@@ -22,29 +22,29 @@ const UserInterestModel = {
         if (deleteError) throw deleteError;
 
         // Insert new interests
-        const rows = categoryIds.map((categoryId) => ({
+        const rows = interestIds.map((interestId) => ({
             user_id: userId,
-            category_id: categoryId,
+            interest_id: interestId,
         }));
 
         const { data, error } = await supabase
             .from('user_interests')
             .insert(rows)
-            .select('id, user_id, category_id, created_at');
+            .select('id, user_id, interest_id, created_at');
 
         if (error) throw error;
         return data;
     },
 
     /**
-     * Get user interests with category details.
+     * Get user interests with interest details.
      * @param {string} userId
      * @returns {object[]}
      */
     async getByUserId(userId) {
         const { data, error } = await supabase
             .from('user_interests')
-            .select('id, category_id, created_at, categories(id, name, icon_url)')
+            .select('id, interest_id, created_at, interests(id, name, icon_url)')
             .eq('user_id', userId)
             .order('created_at', { ascending: true });
 

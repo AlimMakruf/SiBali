@@ -174,8 +174,10 @@ const discoveryRules = [
         .isArray({ min: 1 })
         .withMessage('At least one interest must be provided'),
     body('budgetRange')
-        .isIn(['Budget', 'Moderate', 'Luxury'])
-        .withMessage('Budget must be Budget, Moderate, or Luxury'),
+        .isString()
+        .trim()
+        .notEmpty()
+        .withMessage('Budget range is required (e.g., IDR 500,000, $1000, or Budget)'),
     body('adults')
         .isInt({ min: 1 })
         .withMessage('At least 1 adult is required'),

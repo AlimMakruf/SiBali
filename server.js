@@ -121,10 +121,16 @@ app.use(errorHandler);
 // ---------- Start Server ----------
 // On Vercel, the platform handles connections — skip app.listen
 if (!process.env.VERCEL) {
+    const { startTrendingScheduler } = require('./src/scheduler/trendingScheduler');
+
     app.listen(config.port, () => {
         console.log(`\n🚀 SIBALI API running at http://localhost:${config.port}`);
         console.log(`📌 Environment: ${config.nodeEnv}`);
-        console.log(`🔑 Gemini API Key: ${config.gemini.apiKey ? 'Configured ✓' : 'NOT SET ✗'}\n`);
+        console.log(`🔑 Gemini API Key: ${config.gemini.apiKey ? 'Configured ✓' : 'NOT SET ✗'}`);
+
+        // Start the trending destination scheduler (every 2 days)
+        startTrendingScheduler();
+        console.log('');
     });
 }
 

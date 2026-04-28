@@ -1,7 +1,7 @@
 {
 	"info": {
-		"name": "SiBali API v2.0",
-		"description": "SIBALI — Bali Tourism Recommendation System API",
+		"name": "SiBali API v2.1",
+		"description": "SIBALI — Bali Tourism Recommendation System API. Features: AI-powered recommendations via OpenRouter/Gemini, trending destination scheduler (every 2 days), itinerary generation, user profiles, reviews, and more.",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
@@ -86,6 +86,20 @@
 						"header": [],
 						"auth": { "type": "noauth" },
 						"url": { "raw": "{{baseUrl}}/categories", "host": ["{{baseUrl}}"], "path": ["categories"] }
+					}
+				}
+			]
+		},
+		{
+			"name": "Interests",
+			"item": [
+				{
+					"name": "Get All Interests",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"auth": { "type": "noauth" },
+						"url": { "raw": "{{baseUrl}}/interests", "host": ["{{baseUrl}}"], "path": ["interests"] }
 					}
 				}
 			]
@@ -199,7 +213,7 @@
 					"request": {
 						"method": "POST",
 						"header": [],
-						"body": { "mode": "raw", "raw": "{\n  \"categoryIds\": [\n    \"{{categoryId}}\",\n    \"REPLACE_WITH_CATEGORY_ID_2\",\n    \"REPLACE_WITH_CATEGORY_ID_3\"\n  ]\n}", "options": { "raw": { "language": "json" } } },
+						"body": { "mode": "raw", "raw": "{\n  \"interestIds\": [\n    \"REPLACE_WITH_INTEREST_ID_1\",\n    \"REPLACE_WITH_INTEREST_ID_2\",\n    \"REPLACE_WITH_INTEREST_ID_3\"\n  ]\n}", "options": { "raw": { "language": "json" } } },
 						"url": { "raw": "{{baseUrl}}/users/me/interests", "host": ["{{baseUrl}}"], "path": ["users", "me", "interests"] }
 					}
 				},
@@ -384,7 +398,7 @@
 					"request": {
 						"method": "POST",
 						"header": [],
-						"body": { "mode": "raw", "raw": "{\n  \"durationDays\": 3,\n  \"durationNights\": 2,\n  \"interests\": [\"Beach\", \"Culture\", \"Nature\"],\n  \"budgetRange\": \"Moderate\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"area\": \"Ubud and Seminyak\",\n  \"specialRequests\": \"We love coffee and want to visit a nice cafe\",\n  \"customPreferences\": \"Avoid crowded places if possible\"\n}", "options": { "raw": { "language": "json" } } },
+						"body": { "mode": "raw", "raw": "{\n  \"durationDays\": 3,\n  \"durationNights\": 2,\n  \"interests\": [\"Beach\", \"Culture\", \"Nature\"],\n  \"budgetRange\": \"IDR 5,000,000\",\n  \"adults\": 2,\n  \"children\": 0,\n  \"area\": \"Ubud and Seminyak\",\n  \"specialRequests\": \"We love coffee and want to visit a nice cafe\",\n  \"customPreferences\": \"Avoid crowded places if possible\"\n}", "options": { "raw": { "language": "json" } } },
 						"url": { "raw": "{{baseUrl}}/discovery/generate-itinerary", "host": ["{{baseUrl}}"], "path": ["discovery", "generate-itinerary"] }
 					}
 				}

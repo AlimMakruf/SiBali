@@ -5,6 +5,7 @@
 const ItineraryModel = require('../models/itineraryModel');
 const ItineraryDayModel = require('../models/itineraryDayModel');
 const ItineraryItemModel = require('../models/itineraryItemModel');
+const CategoryModel = require('../models/categoryModel');
 
 const itineraryService = {
     async create(data) {
@@ -71,12 +72,28 @@ const itineraryService = {
                     if (existingDest) {
                         destinationId = existingDest.id;
                     } else {
-                        // Create new destination
+                        // Resolve category_id from Gemini's category string
+                        let categoryId = null;
+                        if (destData.category) {
+                            const cat = await CategoryModel.findOrCreate(destData.category);
+                            categoryId = cat ? cat.id : null;
+                        }
+
+                        // Create new destination — map all Gemini fields
                         const newDestRow = {
                             name: destData.destinationName,
+                            category_id: categoryId,
                             description: destData.about || '',
+                            ai_description: destData.aiInsight || null,
+                            about: destData.about || null,
+                            address: destData.contactInfo?.location || null,
                             area: destData.contactInfo?.location || null,
+                            latitude: destData.coordinates?.latitude || null,
+                            longitude: destData.coordinates?.longitude || null,
                             gmaps_url: destData.gmapsUrl || null,
+                            phone: destData.contactInfo?.phone || null,
+                            website: destData.contactInfo?.website || null,
+                            amenities: Array.isArray(destData.amenities) ? destData.amenities : [],
                             rating_avg: destData.rating || null,
                             is_active: true,
                             is_trending: false,

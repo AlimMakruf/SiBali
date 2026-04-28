@@ -44,7 +44,7 @@ const ItineraryModel = {
     async findById(id) {
         const { data, error } = await supabase
             .from('itineraries')
-            .select('*, itinerary_days(id, day_number, date, created_at, itinerary_items(id, destination_id, visit_time, order_in_day, notes, created_at, destinations(id, name, images, area, rating_avg)))')
+            .select('*, itinerary_days(id, day_number, date, created_at, itinerary_items(id, destination_id, visit_time, order_in_day, notes, created_at, destinations(*)))')
             .eq('id', id)
             .single();
         if (error && error.code === 'PGRST116') return null;

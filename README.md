@@ -1,6 +1,6 @@
 # 🌴 SIBALI — Sistem Rekomendasi Pariwisata Bali
 
-**SIBALI** (Sistem Rekomendasi Pariwisata Bali) is a RESTful API that provides AI-powered tourism recommendations for Bali. It uses **Google Gemini AI** to generate personalized place recommendations and trending tourist spots, with **Supabase** as the database backend and **JWT** for user authentication.
+**SIBALI** (Sistem Rekomendasi Pariwisata Bali) is a RESTful API that provides AI-powered tourism recommendations for Bali. It uses **Google Gemini AI** (via OpenRouter) to generate personalized place recommendations, trending tourist spots, and custom itineraries, with **Supabase** as the database backend and **JWT** for user authentication.
 
 ---
 
@@ -24,10 +24,14 @@
 
 - **User Authentication** — Register, login, refresh token, and logout with dual JWT token management
 - **Token Management** — Short-lived access tokens (15m) + long-lived refresh tokens (7d) for secure sessions
-- **Check User** — Verify if JWT is active and retrieve authenticated user data
 - **Token Blacklisting** — Secure logout by invalidating tokens before expiry
-- **Trending Places** — Get AI-generated trending/viral tourist places in Bali
+- **User Profiles** — Profile management, interests, stats, saved & visited destinations
+- **Destinations** — Browse, search, and view destination details with full metadata (coordinates, amenities, etc.)
+- **Reviews** — Create, view, and delete destination reviews
+- **Trending Places** — AI-generated trending destinations with auto-refresh scheduler (every 2 days)
 - **Smart Search** — Search for tourism recommendations by keyword, category, and budget
+- **AI Itinerary Generation** — Generate personalized multi-day itineraries from discovery inputs
+- **Trending Scheduler** — Automated `node-cron` job that refreshes trending destinations every 2 days
 - **Response Caching** — 30-minute TTL cache to avoid redundant AI calls
 - **Search History** — Per-user search history tracking
 - **Input Validation** — Request body validation with `express-validator`
@@ -37,17 +41,19 @@
 
 ## 🛠 Tech Stack
 
-| Technology                 | Purpose                          |
-| -------------------------- | -------------------------------- |
-| **Express.js 5**           | Web framework / API server       |
-| **Supabase (PostgreSQL)**  | Database (users, cache, history) |
-| **Google Gemini AI**       | AI-powered recommendations      |
-| **JSON Web Token (JWT)**   | Authentication                   |
-| **bcryptjs**               | Password hashing                 |
-| **express-validator**      | Input validation                 |
-| **Helmet**                 | Security headers                 |
-| **Morgan**                 | HTTP request logging             |
-| **dotenv**                 | Environment variable management  |
+| Technology                 | Purpose                                    |
+| -------------------------- | ------------------------------------------ |
+| **Express.js 5**           | Web framework / API server                 |
+| **Supabase (PostgreSQL)**  | Database (destinations, users, itineraries)|
+| **Google Gemini AI**       | AI-powered recommendations (via OpenRouter)|
+| **OpenRouter API**         | AI model gateway for Gemini access         |
+| **node-cron**              | Scheduled tasks (trending refresh)         |
+| **JSON Web Token (JWT)**   | Authentication                             |
+| **bcryptjs**               | Password hashing                           |
+| **express-validator**      | Input validation                           |
+| **Helmet**                 | Security headers                           |
+| **Morgan**                 | HTTP request logging                       |
+| **dotenv**                 | Environment variable management            |
 
 ---
 
@@ -55,33 +61,63 @@
 
 ```
 SiBali/
-├── server.js                        # Entry point — starts Express server
+├── server.js                        # Entry point — starts Express server + scheduler
 ├── package.json                     # Dependencies & scripts
 ├── .env                             # Environment variables (not committed)
 ├── .env.example                     # Template for .env
+├── api/
+│   └── index.js                     # Vercel serverless entry point
 └── src/
     ├── config/
     │   ├── config.js                # Centralized config from env vars
     │   └── supabase.js              # Supabase client initialization
     ├── controllers/
-    │   ├── authController.js        # Handles register, login, refresh, me, logout
-    │   └── recommendationController.js  # Handles trending & search requests
+    │   ├── authController.js        # Auth: register, login, refresh, me, logout
+    │   ├── categoryController.js    # Category listing
+    │   ├── destinationController.js # Destination CRUD + trending
+    │   ├── discoveryController.js   # AI itinerary generation
+    │   ├── interestController.js    # Interest listing
+    │   ├── itineraryController.js   # Itinerary CRUD + days/items
+    │   ├── recommendationController.js  # Trending & search
+    │   ├── reviewController.js      # Destination reviews
+    │   └── userProfileController.js # Profile, interests, saved, visited
     ├── middlewares/
-    │   ├── authMiddleware.js        # JWT verification + blacklist check middleware
+    │   ├── authMiddleware.js        # JWT verification + blacklist check
     │   ├── errorHandler.js          # Global error handler
     │   └── validator.js             # Input validation rules
     ├── models/
-    │   ├── userModel.js             # User table operations (CRUD)
-    │   ├── tokenBlacklistModel.js   # Token blacklist table operations
-    │   ├── searchCacheModel.js      # Search cache table operations
-    │   ├── searchHistoryModel.js    # Search history table operations
-    │   └── trendingPlaceModel.js    # Trending places table operations
+    │   ├── categoryModel.js         # Categories table
+    │   ├── destinationModel.js      # Destinations table (with bulkUpsert)
+    │   ├── interestModel.js         # Interests table
+    │   ├── itineraryModel.js        # Itineraries table
+    │   ├── itineraryDayModel.js     # Itinerary days table
+    │   ├── itineraryItemModel.js    # Itinerary items table
+    │   ├── reviewModel.js           # Reviews table
+    │   ├── savedDestinationModel.js # Saved destinations table
+    │   ├── searchCacheModel.js      # Search cache table
+    │   ├── searchHistoryModel.js    # Search history table
+    │   ├── tokenBlacklistModel.js   # Token blacklist table
+    │   ├── userInterestModel.js     # User-interest mapping table
+    │   ├── userModel.js             # Users table
+    │   └── visitedDestinationModel.js # Visited destinations table
     ├── routes/
-    │   ├── authRoutes.js            # Auth route definitions
-    │   └── recommendationRoutes.js  # Recommendation route definitions (protected)
+    │   ├── authRoutes.js            # /api/auth
+    │   ├── categoryRoutes.js        # /api/categories
+    │   ├── destinationRoutes.js     # /api/destinations
+    │   ├── discoveryRoutes.js       # /api/discovery
+    │   ├── interestRoutes.js        # /api/interests
+    │   ├── itineraryRoutes.js       # /api/itineraries
+    │   ├── recommendationRoutes.js  # /api/recommendations
+    │   └── userRoutes.js            # /api/users
+    ├── scheduler/
+    │   └── trendingScheduler.js     # Cron job: refresh trending every 2 days
     └── services/
-        ├── authService.js           # Auth business logic (hash, token, refresh, logout)
-        └── geminiService.js         # Gemini AI integration + caching logic
+        ├── authService.js           # Auth business logic
+        ├── destinationService.js    # Destination business logic
+        ├── geminiService.js         # Gemini AI integration + caching
+        ├── itineraryService.js      # Itinerary generation + CRUD
+        ├── reviewService.js         # Review business logic
+        └── userProfileService.js    # Profile, interests, saved, visited
 ```
 
 ---
@@ -91,38 +127,62 @@ SiBali/
 The project follows the **Route → Controller → Service → Model** pattern:
 
 ### `server.js` — Entry Point
-Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), mounts route modules under `/api/auth` and `/api/recommendations`, and starts the server.
+Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), mounts all route modules, and starts the trending destination scheduler on boot.
 
 ### Config (`src/config/`)
-- **`config.js`** — Loads environment variables via `dotenv` and exports a single config object with settings for `port`, `jwt`, `supabase`, `gemini`, and `cache` (30-min TTL).
-- **`supabase.js`** — Initializes the Supabase client using the URL and service key from config. Warns if credentials are missing.
+- **`config.js`** — Loads environment variables via `dotenv` and exports a single config object with settings for `port`, `jwt`, `supabase`, `gemini`, `openrouter`, and `cache` (30-min TTL).
+- **`supabase.js`** — Initializes the Supabase client using the URL and service key from config.
+
+### Scheduler (`src/scheduler/`)
+- **`trendingScheduler.js`** — Uses `node-cron` to run a job every 2 days at midnight (WITA/Bali timezone). Calls `geminiService.refreshTrending()` to fetch fresh trending destinations from Gemini AI and save them to the database.
 
 ### Routes (`src/routes/`)
-- **`authRoutes.js`** — Maps `POST /register`, `POST /login`, `POST /refresh-token`, `GET /me`, and `POST /logout` to the auth controller. Protected routes use `authMiddleware`.
-- **`recommendationRoutes.js`** — All routes require JWT authentication (`authMiddleware`). Maps `GET /trending` and `POST /search` to the recommendation controller.
+- **`authRoutes.js`** — Authentication endpoints (register, login, refresh, me, logout)
+- **`categoryRoutes.js`** — Public category listing
+- **`interestRoutes.js`** — Public interest listing
+- **`destinationRoutes.js`** — Destination CRUD, reviews, save/unsave, visited (mixed public/protected)
+- **`userRoutes.js`** — User profile, interests, stats, saved, visited, reviews (protected)
+- **`itineraryRoutes.js`** — Itinerary CRUD with days and items (protected)
+- **`discoveryRoutes.js`** — AI itinerary generation (protected)
+- **`recommendationRoutes.js`** — Trending places and search (protected)
 
 ### Controllers (`src/controllers/`)
-- **`authController.js`** — Receives validated request data, calls `authService`, and returns JSON responses for register (201), login (200), refresh token (200), check user (200), and logout (200).
-- **`recommendationController.js`** — Calls `geminiService` for trending places and search recommendations. Includes the `source` field (`database`/`gemini`/`cache`) in responses.
+- **`authController.js`** — Register (201), login (200), refresh (200), me (200), logout (200)
+- **`destinationController.js`** — List, trending, and detail endpoints
+- **`discoveryController.js`** — AI itinerary generation from discovery inputs
+- **`itineraryController.js`** — Full CRUD for itineraries, days, and items
+- **`reviewController.js`** — Create and delete reviews
+- **`userProfileController.js`** — Profile, interests, stats, saved/visited destinations
+- **`recommendationController.js`** — Trending places and search via Gemini AI
 
 ### Services (`src/services/`)
-- **`authService.js`** — Handles password hashing with bcrypt (10 salt rounds), user creation via `UserModel`, password verification on login, dual JWT generation (access + refresh tokens), token refresh, token blacklisting on logout, and user check.
-- **`geminiService.js`** — Core AI integration:
-  - `getTrendingPlaces()` — Checks `trending_places` table first; if empty, queries Gemini for 10 trending Bali spots, saves them, and returns the results.
-  - `searchRecommendations()` — Checks `search_caches` by keyword; if valid cache exists (< 30 min), uses it; otherwise queries Gemini with keyword/category/budget, caches the response, and records search history.
+- **`authService.js`** — Password hashing, JWT generation (access + refresh), token refresh, blacklisting
+- **`geminiService.js`** — Core AI integration via OpenRouter:
+  - `getTrendingPlaces()` — Returns trending destinations from DB; checks 2-day staleness — triggers background `refreshTrending()` if data is stale, or calls it synchronously if no data exists
+  - `refreshTrending()` — Force-fetches 10 trending destinations from Gemini and persists all fields (coordinates, amenities, contact info, etc.) via `DestinationModel.bulkUpsert()`. Returns `{ source, count, data }`
+  - `searchRecommendations()` — Keyword search with 30-min cache TTL
+  - `generateItineraryFromDiscovery()` — Generates multi-day itineraries from user preferences
+- **`itineraryService.js`** — Itinerary CRUD + AI generation orchestration. Auto-provisions destinations from Gemini data with full field mapping and automatic category resolution via `CategoryModel.findOrCreate()`
+- **`destinationService.js`** — Destination listing and search
+- **`reviewService.js`** — Review creation, listing, and deletion
+- **`userProfileService.js`** — Profile updates, interests, saved/visited tracking, stats
 
 ### Models (`src/models/`)
 Each model wraps Supabase queries for a specific table:
-- **`userModel.js`** — `create`, `findByEmail`, `findById` on the `users` table. Handles duplicate email detection (SQL error code `23505`).
-- **`tokenBlacklistModel.js`** — `add`, `isBlacklisted`, `cleanupExpired` on the `token_blacklist` table. Used for logout token invalidation.
-- **`searchCacheModel.js`** — `findByKeyword` (with TTL check), `upsert` on the `search_caches` table.
-- **`searchHistoryModel.js`** — `create`, `findByUserId` on the `search_histories` table.
-- **`trendingPlaceModel.js`** — `getActive`, `bulkUpsert` (deactivates old records, inserts new batch) on the `trending_places` table.
+- **`userModel.js`** — Users table with duplicate email detection
+- **`tokenBlacklistModel.js`** — Token blacklist for secure logout
+- **`destinationModel.js`** — Destinations table with enriched `bulkUpsert` that maps 14+ Gemini fields (name, category_id, description, ai_description, about, address, area, latitude, longitude, gmaps_url, phone, website, amenities, rating_avg). Uses a local category cache to minimize DB lookups. `getTrending()` now sorts by `created_at` descending for staleness checks
+- **`categoryModel.js`** — Categories with `findByNameFuzzy()` (case-insensitive ILIKE), `create()` (auto-log), and `findOrCreate()` (fuzzy-match-or-create pattern for Gemini category strings)
+- **`interestModel.js`** — Interests lookup
+- **`itineraryModel.js`** / **`itineraryDayModel.js`** / **`itineraryItemModel.js`** — Itinerary structure. All destination joins now use `destinations(*)` to return full destination data including all enriched fields
+- **`reviewModel.js`** — Destination reviews with rating aggregation
+- **`savedDestinationModel.js`** / **`visitedDestinationModel.js`** — User-destination tracking
+- **`searchCacheModel.js`** / **`searchHistoryModel.js`** — Search caching and history
 
 ### Middlewares (`src/middlewares/`)
-- **`authMiddleware.js`** — Extracts JWT from `Authorization: Bearer <token>`, verifies it, checks the token blacklist, fetches the user from Supabase, and sets `req.user` and `req.tokenPayload` (includes `jti`, `exp`). Handles expired/invalid/revoked tokens.
-- **`validator.js`** — Defines validation rule sets (`registerRules`, `loginRules`, `searchRules`, `refreshTokenRules`) using `express-validator`. Returns structured 400 errors on validation failure.
-- **`errorHandler.js`** — Catches all errors and returns a consistent JSON response. In `development` mode, includes the error stack trace.
+- **`authMiddleware.js`** — JWT extraction, verification, blacklist check, and user hydration
+- **`validator.js`** — Validation rules for all endpoints (register, login, search, reviews, discovery, itinerary, profile, interests)
+- **`errorHandler.js`** — Consistent JSON error responses with stack traces in development mode
 
 ---
 
@@ -178,8 +238,9 @@ JWT_EXPIRES_IN=15m
 JWT_REFRESH_SECRET=your_jwt_refresh_secret_key_here
 JWT_REFRESH_EXPIRES_IN=7d
 
-# Google Gemini API — powers AI recommendations
+# Google Gemini API / OpenRouter — powers AI recommendations
 GEMINI_API_KEY=your_gemini_api_key_here
+OPENROUTER_API_KEY=your_openrouter_api_key_here
 
 # Supabase — database backend
 SUPABASE_URL=https://your-project.supabase.co
@@ -194,7 +255,8 @@ SUPABASE_SERVICE_KEY=your_supabase_service_role_key_here
 | `JWT_EXPIRES_IN`         | Access token expiry duration (default `15m`)                    |
 | `JWT_REFRESH_SECRET`     | Secret key for signing refresh tokens — must differ from `JWT_SECRET` |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry duration (default `7d`)                    |
-| `GEMINI_API_KEY`         | Your Google Gemini API key                                      |
+| `GEMINI_API_KEY`         | Your Google Gemini API key (fallback for OpenRouter)            |
+| `OPENROUTER_API_KEY`     | Your OpenRouter API key — used for AI requests                  |
 | `SUPABASE_URL`           | Your Supabase project URL                                       |
 | `SUPABASE_SERVICE_KEY`   | Your Supabase service role key (found in Project Settings → API)  |
 
@@ -211,22 +273,130 @@ CREATE TABLE users (
     name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    avatar_url TEXT,
+    bio TEXT,
+    phone VARCHAR(20),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Categories table
+CREATE TABLE categories (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    icon_url TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Trending places table
-CREATE TABLE trending_places (
+-- 3. Interests table
+CREATE TABLE interests (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    icon_url TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Destinations table (replaces old trending_places)
+CREATE TABLE destinations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
     description TEXT DEFAULT '',
-    category VARCHAR(100),
+    ai_description TEXT,
+    about TEXT,
+    address TEXT,
+    area VARCHAR(255),
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
     gmaps_url TEXT,
+    phone VARCHAR(50),
+    website TEXT,
+    amenities JSONB DEFAULT '[]',
+    images JSONB DEFAULT '[]',
+    rating_avg NUMERIC(2,1),
+    review_count INTEGER DEFAULT 0,
+    is_trending BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Search caches table
+-- 5. Reviews table
+CREATE TABLE reviews (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    comment TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. Saved destinations table
+CREATE TABLE saved_destinations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, destination_id)
+);
+
+-- 7. Visited destinations table
+CREATE TABLE visited_destinations (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    destination_id UUID REFERENCES destinations(id) ON DELETE CASCADE,
+    visited_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, destination_id)
+);
+
+-- 8. User interests table
+CREATE TABLE user_interests (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    interest_id UUID REFERENCES interests(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, interest_id)
+);
+
+-- 9. Itineraries table
+CREATE TABLE itineraries (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    status VARCHAR(20) DEFAULT 'draft',
+    duration_days INTEGER,
+    duration_nights INTEGER,
+    budget_range VARCHAR(100),
+    area VARCHAR(255),
+    discovery_inputs JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 10. Itinerary days table
+CREATE TABLE itinerary_days (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    itinerary_id UUID REFERENCES itineraries(id) ON DELETE CASCADE,
+    day_number INTEGER NOT NULL,
+    date DATE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 11. Itinerary items table
+CREATE TABLE itinerary_items (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    itinerary_day_id UUID REFERENCES itinerary_days(id) ON DELETE CASCADE,
+    destination_id UUID REFERENCES destinations(id) ON DELETE SET NULL,
+    visit_time VARCHAR(50),
+    order_in_day INTEGER DEFAULT 1,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 12. Search caches table
 CREATE TABLE search_caches (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     keyword VARCHAR(255) UNIQUE NOT NULL,
@@ -235,7 +405,7 @@ CREATE TABLE search_caches (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Search histories table
+-- 13. Search histories table
 CREATE TABLE search_histories (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
@@ -244,7 +414,7 @@ CREATE TABLE search_histories (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Token blacklist table (for logout invalidation)
+-- 14. Token blacklist table (for logout invalidation)
 CREATE TABLE token_blacklist (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     token_jti VARCHAR(255) UNIQUE NOT NULL,
@@ -253,8 +423,12 @@ CREATE TABLE token_blacklist (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Index for fast lookup during auth middleware check
+-- Indexes
 CREATE INDEX idx_token_blacklist_jti ON token_blacklist(token_jti);
+CREATE INDEX idx_destinations_trending ON destinations(is_trending) WHERE is_active = true;
+CREATE INDEX idx_destinations_category ON destinations(category_id);
+CREATE INDEX idx_reviews_destination ON reviews(destination_id);
+CREATE INDEX idx_itinerary_items_day ON itinerary_items(itinerary_day_id);
 ```
 
 ---
@@ -267,19 +441,70 @@ CREATE INDEX idx_token_blacklist_jti ON token_blacklist(token_jti);
 | ------ | -------- | ---- | -------------------- |
 | GET    | `/`      | No   | API info & endpoints |
 
-### Authentication
+### Authentication (`/api/auth`)
 
 | Method | Endpoint                       | Auth | Description                           |
 | ------ | ------------------------------ | ---- | ------------------------------------- |
-| POST   | `/api/auth/register`           | No   | Register new user                     |
-| POST   | `/api/auth/login`              | No   | Login user                            |
-| POST   | `/api/auth/refresh-token`      | No*  | Refresh access token                  |
-| GET    | `/api/auth/me`                 | Yes  | Check JWT & get user data             |
-| POST   | `/api/auth/logout`             | Yes  | Invalidate tokens (logout)            |
+| POST   | `/register`                    | No   | Register new user                     |
+| POST   | `/login`                       | No   | Login user                            |
+| POST   | `/refresh-token`               | No*  | Refresh access token                  |
+| GET    | `/me`                          | Yes  | Check JWT & get user data             |
+| POST   | `/logout`                      | Yes  | Invalidate tokens (logout)            |
 
 > \* Refresh token is sent in the request body, not via Authorization header.
 
-### Discovery & Recommendations (Protected — requires JWT)
+### Categories & Interests (Public)
+
+| Method | Endpoint                       | Auth | Description                           |
+| ------ | ------------------------------ | ---- | ------------------------------------- |
+| GET    | `/api/categories`              | No   | List all active categories            |
+| GET    | `/api/interests`               | No   | List all active interests             |
+
+### Destinations (`/api/destinations`)
+
+| Method | Endpoint                       | Auth | Description                           |
+| ------ | ------------------------------ | ---- | ------------------------------------- |
+| GET    | `/`                            | No   | List all destinations                 |
+| GET    | `/trending`                    | No   | List trending destinations            |
+| GET    | `/:id`                         | No   | Get destination by ID                 |
+| GET    | `/:id/reviews`                 | No   | Get reviews for a destination         |
+| POST   | `/:id/reviews`                 | Yes  | Add a review for a destination        |
+| POST   | `/:id/save`                    | Yes  | Save destination                      |
+| DELETE | `/:id/save`                    | Yes  | Unsave destination                    |
+| POST   | `/:id/visited`                 | Yes  | Mark destination as visited           |
+| DELETE | `/:id/visited`                 | Yes  | Unmark destination as visited         |
+
+### User Profile (`/api/users`) - Protected
+
+| Method | Endpoint                       | Auth | Description                           |
+| ------ | ------------------------------ | ---- | ------------------------------------- |
+| GET    | `/me/profile`                  | Yes  | Get user profile                      |
+| PUT    | `/me/profile`                  | Yes  | Update user profile                   |
+| POST   | `/me/interests`                | Yes  | Set user interests                    |
+| GET    | `/me/interests`                | Yes  | Get user interests                    |
+| GET    | `/me/stats`                    | Yes  | Get user stats                        |
+| GET    | `/me/saved`                    | Yes  | Get saved destinations                |
+| GET    | `/me/visited`                  | Yes  | Get visited destinations              |
+| GET    | `/me/reviews`                  | Yes  | Get user's reviews                    |
+| DELETE | `/reviews/:id`                 | Yes  | Delete a review                       |
+
+### Itineraries (`/api/itineraries`) - Protected
+
+| Method | Endpoint                       | Auth | Description                           |
+| ------ | ------------------------------ | ---- | ------------------------------------- |
+| POST   | `/`                            | Yes  | Create a new itinerary                |
+| GET    | `/`                            | Yes  | Get all itineraries for user          |
+| GET    | `/:id`                         | Yes  | Get itinerary details by ID           |
+| PUT    | `/:id`                         | Yes  | Update an itinerary                   |
+| DELETE | `/:id`                         | Yes  | Delete an itinerary                   |
+| POST   | `/:id/days`                    | Yes  | Add a day to an itinerary             |
+| GET    | `/:id/days`                    | Yes  | Get days for an itinerary             |
+| DELETE | `/days/:dayId`                 | Yes  | Delete a day                          |
+| POST   | `/days/:dayId/items`           | Yes  | Add an item to a day                  |
+| PUT    | `/items/:itemId`               | Yes  | Update an item                        |
+| DELETE | `/items/:itemId`               | Yes  | Delete an item                        |
+
+### Discovery & Recommendations - Protected
 
 | Method | Endpoint                              | Auth | Description                        |
 | ------ | ------------------------------------- | ---- | ---------------------------------- |
@@ -493,7 +718,7 @@ curl -X POST http://localhost:5000/api/discovery/generate-itinerary \
     "durationDays": 3,
     "durationNights": 2,
     "interests": ["Beach", "Culture", "Culinary"],
-    "budgetRange": "Moderate",
+    "budgetRange": "IDR 5,000,000",
     "adults": 2,
     "children": 0,
     "area": "Ubud",
@@ -506,7 +731,7 @@ curl -X POST http://localhost:5000/api/discovery/generate-itinerary \
 | `durationDays`      | integer  | Yes      | Number of days (1-14)                                          |
 | `durationNights`    | integer  | No       | Number of nights                                               |
 | `interests`         | array    | Yes      | Array of interest categories (e.g. `Beach`, `Culture`)         |
-| `budgetRange`       | string   | Yes      | One of: `Budget`, `Moderate`, `Luxury`                         |
+| `budgetRange`       | string   | Yes      | Free-text budget — any format accepted (e.g. `IDR 500,000`, `$1000`, `Budget`, `Moderate`) |
 | `adults`            | integer  | Yes      | Number of adults (min 1)                                       |
 | `children`          | integer  | No       | Number of children                                             |
 | `area`              | string   | No       | Specific area in Bali (e.g. `Ubud`, `Canggu`)                  |
@@ -587,11 +812,14 @@ In your Vercel project dashboard, go to **Settings → Environment Variables** a
 | `JWT_REFRESH_SECRET`     | Your strong refresh secret key           |
 | `JWT_REFRESH_EXPIRES_IN` | `7d`                                     |
 | `GEMINI_API_KEY`         | Your Google Gemini API key               |
+| `OPENROUTER_API_KEY`     | Your OpenRouter API key                  |
 | `SUPABASE_URL`           | `https://your-project.supabase.co`       |
 | `SUPABASE_SERVICE_KEY`   | Your Supabase service role key           |
 | `NODE_ENV`               | `production`                             |
 
 > **Note:** `PORT` is not needed on Vercel — the platform manages it automatically.
+
+> **Note:** The trending destination scheduler (`node-cron`) does not run on Vercel since it is a serverless environment. Use an external cron service (e.g. Vercel Cron Jobs, GitHub Actions, or cron-job.org) to call the refresh endpoint periodically if needed.
 
 After deploying, your API will be live at `https://your-project.vercel.app`.
 

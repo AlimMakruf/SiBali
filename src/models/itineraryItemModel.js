@@ -15,7 +15,7 @@ const ItineraryItemModel = {
                 order_in_day: data.orderInDay || 1,
                 notes: data.notes || null,
             })
-            .select('*, destinations(id, name, images, area)')
+            .select('*, destinations(*)')
             .single();
         if (error) throw error;
         return result;
@@ -24,7 +24,7 @@ const ItineraryItemModel = {
     async getByDayId(dayId) {
         const { data, error } = await supabase
             .from('itinerary_items')
-            .select('*, destinations(id, name, images, area, rating_avg)')
+            .select('*, destinations(*)')
             .eq('itinerary_day_id', dayId)
             .order('order_in_day', { ascending: true });
         if (error) throw error;
@@ -41,7 +41,7 @@ const ItineraryItemModel = {
             .from('itinerary_items')
             .update(updates)
             .eq('id', id)
-            .select('*, destinations(id, name, images, area)')
+            .select('*, destinations(*)')
             .single();
         if (error && error.code === 'PGRST116') return null;
         if (error) throw error;

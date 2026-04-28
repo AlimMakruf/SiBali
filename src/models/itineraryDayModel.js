@@ -18,7 +18,7 @@ const ItineraryDayModel = {
     async getByItineraryId(itineraryId) {
         const { data, error } = await supabase
             .from('itinerary_days')
-            .select('*, itinerary_items(id, destination_id, visit_time, order_in_day, notes, destinations(id, name, images, area))')
+            .select('*, itinerary_items(id, destination_id, visit_time, order_in_day, notes, destinations(*))')
             .eq('itinerary_id', itineraryId)
             .order('day_number', { ascending: true });
         if (error) throw error;

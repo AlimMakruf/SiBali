@@ -67,16 +67,42 @@ const geminiService = {
     /**
      * Get a list of trending/viral tourist places in Bali.
      * 1) Check the destinations table (is_trending = true)
-     * 2) If empty, call Gemini and save to DB
+     * 2) If empty OR data is older than 2 days, call Gemini and save to DB
+     * 3) Return results sorted newest first
      */
     async getTrendingPlaces() {
         // Check from database first
         const existing = await DestinationModel.getTrending();
+
         if (existing && existing.length > 0) {
+            // Check if data is still fresh (within 2 days)
+            const newestRecord = existing[0]; // sorted by created_at desc
+            const dataAge = Date.now() - new Date(newestRecord.created_at).getTime();
+            const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+
+            if (dataAge < twoDaysMs) {
+                return { source: 'database', data: existing };
+            }
+
+            // Data is stale — refresh in background but return existing for now
+            console.log('⏳ [Trending] Data is older than 2 days, triggering refresh...');
+            this.refreshTrending().catch(err =>
+                console.error('❌ [Trending] Background refresh failed:', err.message)
+            );
             return { source: 'database', data: existing };
         }
 
-        // No active data — call Gemini
+        // No active data at all — call Gemini synchronously
+        const result = await this.refreshTrending();
+        return { source: 'gemini', data: result.data };
+    },
+
+    /**
+     * Force-refresh trending destinations from Gemini AI.
+     * Called by the scheduler (every 2 days) and on-demand when data is stale.
+     * @returns {{ source: string, count: number, data: object[] }}
+     */
+    async refreshTrending() {
         const prompt = `You are the AI recommendation engine for a Bali tourism application named SIBALI.
 
         Your task is to act as a local expert and provide 10 tourist places that are currently trending/viral in Bali.
@@ -115,10 +141,10 @@ const geminiService = {
         const places = Array.isArray(geminiData) ? geminiData : [];
         if (places.length > 0) {
             const saved = await DestinationModel.bulkUpsert(places);
-            return { source: 'gemini', data: saved };
+            return { source: 'gemini', count: saved.length, data: saved };
         }
 
-        return { source: 'gemini', data: geminiData };
+        return { source: 'gemini', count: 0, data: geminiData };
     },
 
     /**

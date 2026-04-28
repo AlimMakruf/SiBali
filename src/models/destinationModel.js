@@ -66,7 +66,7 @@ const DestinationModel = {
         return data;
     },
     /**
-     * Get trending destinations.
+     * Get trending destinations, sorted newest first.
      * @param {number} limit
      * @returns {object[]}
      */
@@ -76,7 +76,7 @@ const DestinationModel = {
             .select('*, categories(id, name, icon_url)')
             .eq('is_active', true)
             .eq('is_trending', true)
-            .order('rating_avg', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(limit);
 
         if (error) throw error;
@@ -102,11 +102,13 @@ const DestinationModel = {
     /**
      * Bulk upsert destinations from Gemini (trending import).
      * Deactivates old trending, then inserts new batch.
-     * Replaces the old TrendingPlaceModel.bulkUpsert().
+     * Automatically maps Gemini's category string to category_id.
      * @param {object[]} places
      * @returns {object[]}
      */
     async bulkUpsert(places) {
+        const CategoryModel = require('./categoryModel');
+
         // Deactivate old trending places
         const { error: deactivateError } = await supabase
             .from('destinations')
@@ -115,16 +117,40 @@ const DestinationModel = {
 
         if (deactivateError) throw deactivateError;
 
+        // Build a local cache for category lookups to avoid repeated queries
+        const categoryCache = {};
+        async function resolveCategoryId(categoryName) {
+            if (!categoryName) return null;
+            const key = categoryName.toLowerCase().trim();
+            if (key in categoryCache) return categoryCache[key];
+            const found = await CategoryModel.findOrCreate(categoryName);
+            categoryCache[key] = found ? found.id : null;
+            return categoryCache[key];
+        }
+
         // Insert new batch — map Gemini response to DB columns
-        const rows = places.map((p) => ({
-            name: p.destinationName || p.name,
-            description: p.about || p.description || '',
-            area: (p.contactInfo && p.contactInfo.location) || p.location || p.area || null,
-            gmaps_url: p.gmapsUrl || p.gmaps_url || null,
-            rating_avg: p.rating || null,
-            is_trending: true,
-            is_active: true,
-        }));
+        const rows = [];
+        for (const p of places) {
+            const categoryId = await resolveCategoryId(p.category);
+            rows.push({
+                name: p.destinationName || p.name,
+                category_id: categoryId,
+                description: p.about || p.description || '',
+                ai_description: p.aiInsight || null,
+                about: p.about || null,
+                address: (p.contactInfo && p.contactInfo.location) || p.location || null,
+                area: (p.contactInfo && p.contactInfo.location) || p.location || p.area || null,
+                latitude: (p.coordinates && p.coordinates.latitude) || null,
+                longitude: (p.coordinates && p.coordinates.longitude) || null,
+                gmaps_url: p.gmapsUrl || p.gmaps_url || null,
+                phone: (p.contactInfo && p.contactInfo.phone) || null,
+                website: (p.contactInfo && p.contactInfo.website) || null,
+                amenities: Array.isArray(p.amenities) ? p.amenities : [],
+                rating_avg: p.rating || null,
+                is_trending: true,
+                is_active: true,
+            });
+        }
 
         const { data, error } = await supabase
             .from('destinations')

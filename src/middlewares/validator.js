@@ -140,8 +140,9 @@ const itineraryRules = [
         .withMessage('Duration nights must be 0 or more'),
     body('budget')
         .optional()
-        .isFloat({ min: 0 })
-        .withMessage('Budget must be a positive number'),
+        .trim()
+        .notEmpty()
+        .withMessage('Budget must not be empty if provided'),
     handleValidationErrors,
 ];
 

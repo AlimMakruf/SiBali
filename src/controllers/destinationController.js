@@ -63,6 +63,41 @@ const destinationController = {
             next(error);
         }
     },
+
+    /**
+     * GET /api/destinations/nearby?lat=...&lng=...
+     * Query params: lat (required), lng (required), radius (km, default 15), limit (default 5)
+     */
+    async getNearby(req, res, next) {
+        try {
+            const { lat, lng } = req.query;
+
+            if (!lat || !lng) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'lat and lng query parameters are required',
+                });
+            }
+
+            const radius = req.query.radius ? parseFloat(req.query.radius) : 15;
+            const limit = req.query.limit ? parseInt(req.query.limit) : 5;
+
+            const data = await destinationService.getNearby(
+                parseFloat(lat),
+                parseFloat(lng),
+                radius,
+                limit
+            );
+
+            res.status(200).json({
+                success: true,
+                message: `Found ${data.length} nearby destination(s)`,
+                data,
+            });
+        } catch (error) {
+            next(error);
+        }
+    },
 };
 
 module.exports = destinationController;

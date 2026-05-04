@@ -57,7 +57,7 @@ const DestinationModel = {
     async findByName(name) {
         const { data, error } = await supabase
             .from('destinations')
-            .select('id, name')
+            .select('id, name, images, area')
             .ilike('name', name)
             .single();
 
@@ -100,6 +100,24 @@ const DestinationModel = {
     },
 
     /**
+     * Update a destination by ID.
+     * @param {string} id
+     * @param {object} fields — columns to update (e.g. { images: [...] })
+     * @returns {object}
+     */
+    async update(id, fields) {
+        const { data, error } = await supabase
+            .from('destinations')
+            .update({ ...fields, updated_at: new Date().toISOString() })
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) throw error;
+        return data;
+    },
+
+    /**
      * Bulk upsert destinations from Gemini (trending import).
      * Deactivates old trending, then inserts new batch.
      * Automatically maps Gemini's category string to category_id.
@@ -108,6 +126,7 @@ const DestinationModel = {
      */
     async bulkUpsert(places) {
         const CategoryModel = require('./categoryModel');
+        const { fetchPhotosForDestination } = require('../services/googlePlacesService');
 
         // Deactivate old trending places
         const { error: deactivateError } = await supabase
@@ -152,6 +171,17 @@ const DestinationModel = {
             });
         }
 
+        // Fetch photos from Google Places API in parallel for all rows
+        const photoResults = await Promise.allSettled(
+            rows.map((row) => fetchPhotosForDestination(row.name, row.area, 1))
+        );
+        for (let i = 0; i < rows.length; i++) {
+            const result = photoResults[i];
+            rows[i].images = (result.status === 'fulfilled' && result.value.length > 0)
+                ? result.value
+                : [];
+        }
+
         const { data, error } = await supabase
             .from('destinations')
             .insert(rows)
@@ -178,6 +208,62 @@ const DestinationModel = {
 
         if (error) throw error;
         return data;
+    },
+
+    /**
+     * Find nearby destinations within a radius using bounding-box + Haversine.
+     * @param {number} lat - Center latitude
+     * @param {number} lng - Center longitude
+     * @param {number} [radiusKm=15] - Search radius in km
+     * @param {number} [limit=5] - Max results
+     * @param {string} [excludeId] - Destination ID to exclude (the source destination)
+     * @returns {object[]} - Destinations sorted by distance (nearest first)
+     */
+    async findNearby(lat, lng, radiusKm = 15, limit = 5, excludeId = null) {
+        // Bounding box approximation (1° lat ≈ 111km, 1° lng ≈ 111km * cos(lat))
+        const latDelta = radiusKm / 111;
+        const lngDelta = radiusKm / (111 * Math.cos((lat * Math.PI) / 180));
+
+        let query = supabase
+            .from('destinations')
+            .select('*, categories(id, name, icon_url)')
+            .eq('is_active', true)
+            .not('latitude', 'is', null)
+            .not('longitude', 'is', null)
+            .gte('latitude', lat - latDelta)
+            .lte('latitude', lat + latDelta)
+            .gte('longitude', lng - lngDelta)
+            .lte('longitude', lng + lngDelta);
+
+        if (excludeId) {
+            query = query.neq('id', excludeId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        // Haversine distance calculation for precise filtering
+        function haversineKm(lat1, lng1, lat2, lng2) {
+            const R = 6371;
+            const dLat = ((lat2 - lat1) * Math.PI) / 180;
+            const dLng = ((lng2 - lng1) * Math.PI) / 180;
+            const a =
+                Math.sin(dLat / 2) ** 2 +
+                Math.cos((lat1 * Math.PI) / 180) *
+                Math.cos((lat2 * Math.PI) / 180) *
+                Math.sin(dLng / 2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+
+        // Filter by exact distance and sort
+        return (data || [])
+            .map((d) => ({
+                ...d,
+                _distance_km: haversineKm(lat, lng, d.latitude, d.longitude),
+            }))
+            .filter((d) => d._distance_km <= radiusKm)
+            .sort((a, b) => a._distance_km - b._distance_km)
+            .slice(0, limit);
     },
 };
 

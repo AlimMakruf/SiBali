@@ -25,6 +25,10 @@ const config = {
     apiKey: process.env.OPENROUTER_API_KEY || process.env.GEMINI_API_KEY || '',
   },
 
+  googlePlaces: {
+    apiKey: process.env.GOOGLE_PLACES_API_KEY || '',
+  },
+
   cache: {
     searchTTL: 30 * 60 * 1000, // 30 minutes in ms
   },

@@ -19,6 +19,9 @@ router.get('/', destinationController.getAll);
 // GET /api/destinations/trending
 router.get('/trending', destinationController.getTrending);
 
+// GET /api/destinations/nearby?lat=...&lng=...&radius=15&limit=5
+router.get('/nearby', destinationController.getNearby);
+
 // GET /api/destinations/:id
 router.get('/:id', destinationController.getById);
 

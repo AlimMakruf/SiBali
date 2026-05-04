@@ -27,10 +27,12 @@
 - **Token Blacklisting** — Secure logout by invalidating tokens before expiry
 - **User Profiles** — Profile management, interests, stats, saved & visited destinations
 - **Destinations** — Browse, search, and view destination details with full metadata (coordinates, amenities, etc.)
+- **Nearby Destinations** — Find nearby tourist places based on user's current GPS location (15km radius), with auto-provisioning from Google Places API
 - **Reviews** — Create, view, and delete destination reviews
 - **Trending Places** — AI-generated trending destinations with auto-refresh scheduler (every 2 days)
 - **Smart Search** — Search for tourism recommendations by keyword, category, and budget
 - **AI Itinerary Generation** — Generate personalized multi-day itineraries from discovery inputs
+- **Image Backfill** — Automatically fetches missing destination photos from Google Places during itinerary generation
 - **Trending Scheduler** — Automated `node-cron` job that refreshes trending destinations every 2 days
 - **Response Caching** — 30-minute TTL cache to avoid redundant AI calls
 - **Search History** — Per-user search history tracking
@@ -47,6 +49,7 @@
 | **Supabase (PostgreSQL)**  | Database (destinations, users, itineraries)|
 | **Google Gemini AI**       | AI-powered recommendations (via OpenRouter)|
 | **OpenRouter API**         | AI model gateway for Gemini access         |
+| **Google Places API (New)**| Real destination photos via Text Search    |
 | **node-cron**              | Scheduled tasks (trending refresh)         |
 | **JSON Web Token (JWT)**   | Authentication                             |
 | **bcryptjs**               | Password hashing                           |
@@ -67,6 +70,8 @@ SiBali/
 ├── .env.example                     # Template for .env
 ├── api/
 │   └── index.js                     # Vercel serverless entry point
+├── scripts/
+│   └── backfillTrendingImages.js    # One-off script: backfill missing destination photos
 └── src/
     ├── config/
     │   ├── config.js                # Centralized config from env vars
@@ -74,7 +79,7 @@ SiBali/
     ├── controllers/
     │   ├── authController.js        # Auth: register, login, refresh, me, logout
     │   ├── categoryController.js    # Category listing
-    │   ├── destinationController.js # Destination CRUD + trending
+    │   ├── destinationController.js # Destination CRUD + trending + nearby
     │   ├── discoveryController.js   # AI itinerary generation
     │   ├── interestController.js    # Interest listing
     │   ├── itineraryController.js   # Itinerary CRUD + days/items
@@ -87,7 +92,7 @@ SiBali/
     │   └── validator.js             # Input validation rules
     ├── models/
     │   ├── categoryModel.js         # Categories table
-    │   ├── destinationModel.js      # Destinations table (with bulkUpsert)
+    │   ├── destinationModel.js      # Destinations table (with bulkUpsert, update, findNearby)
     │   ├── interestModel.js         # Interests table
     │   ├── itineraryModel.js        # Itineraries table
     │   ├── itineraryDayModel.js     # Itinerary days table
@@ -103,7 +108,7 @@ SiBali/
     ├── routes/
     │   ├── authRoutes.js            # /api/auth
     │   ├── categoryRoutes.js        # /api/categories
-    │   ├── destinationRoutes.js     # /api/destinations
+    │   ├── destinationRoutes.js     # /api/destinations (+ /nearby)
     │   ├── discoveryRoutes.js       # /api/discovery
     │   ├── interestRoutes.js        # /api/interests
     │   ├── itineraryRoutes.js       # /api/itineraries
@@ -113,9 +118,10 @@ SiBali/
     │   └── trendingScheduler.js     # Cron job: refresh trending every 2 days
     └── services/
         ├── authService.js           # Auth business logic
-        ├── destinationService.js    # Destination business logic
+        ├── destinationService.js    # Destination business logic + nearby
         ├── geminiService.js         # Gemini AI integration + caching
-        ├── itineraryService.js      # Itinerary generation + CRUD
+        ├── googlePlacesService.js   # Google Places API — photos + nearby search
+        ├── itineraryService.js      # Itinerary generation + CRUD + image backfill
         ├── reviewService.js         # Review business logic
         └── userProfileService.js    # Profile, interests, saved, visited
 ```
@@ -140,7 +146,7 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
 - **`authRoutes.js`** — Authentication endpoints (register, login, refresh, me, logout)
 - **`categoryRoutes.js`** — Public category listing
 - **`interestRoutes.js`** — Public interest listing
-- **`destinationRoutes.js`** — Destination CRUD, reviews, save/unsave, visited (mixed public/protected)
+- **`destinationRoutes.js`** — Destination CRUD, nearby, reviews, save/unsave, visited (mixed public/protected)
 - **`userRoutes.js`** — User profile, interests, stats, saved, visited, reviews (protected)
 - **`itineraryRoutes.js`** — Itinerary CRUD with days and items (protected)
 - **`discoveryRoutes.js`** — AI itinerary generation (protected)
@@ -148,7 +154,7 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
 
 ### Controllers (`src/controllers/`)
 - **`authController.js`** — Register (201), login (200), refresh (200), me (200), logout (200)
-- **`destinationController.js`** — List, trending, and detail endpoints
+- **`destinationController.js`** — List, trending, nearby, and detail endpoints
 - **`discoveryController.js`** — AI itinerary generation from discovery inputs
 - **`itineraryController.js`** — Full CRUD for itineraries, days, and items
 - **`reviewController.js`** — Create and delete reviews
@@ -162,8 +168,15 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
   - `refreshTrending()` — Force-fetches 10 trending destinations from Gemini and persists all fields (coordinates, amenities, contact info, etc.) via `DestinationModel.bulkUpsert()`. Returns `{ source, count, data }`
   - `searchRecommendations()` — Keyword search with 30-min cache TTL
   - `generateItineraryFromDiscovery()` — Generates multi-day itineraries from user preferences
-- **`itineraryService.js`** — Itinerary CRUD + AI generation orchestration. Auto-provisions destinations from Gemini data with full field mapping and automatic category resolution via `CategoryModel.findOrCreate()`
-- **`destinationService.js`** — Destination listing and search
+- **`itineraryService.js`** — Itinerary CRUD + AI generation orchestration. Auto-provisions destinations from Gemini data with full field mapping, automatic category resolution via `CategoryModel.findOrCreate()`, and real photo fetching via Google Places API. **Includes image backfill** — automatically fetches photos for existing destinations that have empty images during itinerary generation
+- **`googlePlacesService.js`** — Google Places API (New) integration for destination photos and nearby search:
+  - `searchPlace(name, area?)` — Text Search to find a place and get its `photos[]` array
+  - `getPhotoUrl(photoName)` — Resolves a photo resource name to a stable CDN URL via `skipHttpRedirect=true`
+  - `fetchPhotosForDestination(name, area?, maxPhotos?)` — Orchestrator: search → resolve → return array of photo URLs. Fails gracefully (returns `[]`)
+  - `searchNearby(lat, lng, radiusMeters?, maxResults?, excludeNames?)` — Text Search with `locationBias` circle to find tourist attractions near a coordinate
+  - `searchNearbyWithPhotos(lat, lng, radiusMeters?, maxResults?, excludeNames?)` — Orchestrates nearby search + photo resolution, returns structured objects ready for DB insertion
+- **`destinationService.js`** — Destination listing, search, and **nearby destinations**:
+  - `getNearby(lat, lng, radiusKm?, limit?)` — Finds nearby destinations from user's current location. Checks DB first (bounding box + Haversine), then fetches remaining from Google Places API and auto-provisions them into the DB with photos and category
 - **`reviewService.js`** — Review creation, listing, and deletion
 - **`userProfileService.js`** — Profile updates, interests, saved/visited tracking, stats
 
@@ -171,7 +184,11 @@ Sets up Express with global middleware (Helmet, CORS, Morgan, JSON parser), moun
 Each model wraps Supabase queries for a specific table:
 - **`userModel.js`** — Users table with duplicate email detection
 - **`tokenBlacklistModel.js`** — Token blacklist for secure logout
-- **`destinationModel.js`** — Destinations table with enriched `bulkUpsert` that maps 14+ Gemini fields (name, category_id, description, ai_description, about, address, area, latitude, longitude, gmaps_url, phone, website, amenities, rating_avg). Uses a local category cache to minimize DB lookups. `getTrending()` now sorts by `created_at` descending for staleness checks
+- **`destinationModel.js`** — Destinations table with enriched `bulkUpsert` that maps 14+ Gemini fields (name, category_id, description, ai_description, about, address, area, latitude, longitude, gmaps_url, phone, website, amenities, images, rating_avg). Key methods:
+  - `findByName(name)` — Case-insensitive lookup, returns `id, name, images, area` for backfill checks
+  - `update(id, fields)` — Partial update (e.g. backfill images)
+  - `findNearby(lat, lng, radiusKm?, limit?, excludeId?)` — Bounding-box query + Haversine distance filtering for precise nearby search, returns results sorted by distance
+  - `bulkUpsert(places)` — Batch insert with Google Places photo fetching and category cache
 - **`categoryModel.js`** — Categories with `findByNameFuzzy()` (case-insensitive ILIKE), `create()` (auto-log), and `findOrCreate()` (fuzzy-match-or-create pattern for Gemini category strings)
 - **`interestModel.js`** — Interests lookup
 - **`itineraryModel.js`** / **`itineraryDayModel.js`** / **`itineraryItemModel.js`** — Itinerary structure. All destination joins now use `destinations(*)` to return full destination data including all enriched fields
@@ -194,6 +211,7 @@ Each model wraps Supabase queries for a specific table:
 - **npm** (comes with Node.js)
 - A **Supabase** account with a project — [supabase.com](https://supabase.com)
 - A **Google Gemini API key** — [ai.google.dev](https://ai.google.dev)
+- A **Google Cloud API key** with **Places API (New)** enabled — [console.cloud.google.com](https://console.cloud.google.com) (optional, for destination photos)
 
 ### Installation
 
@@ -242,6 +260,9 @@ JWT_REFRESH_EXPIRES_IN=7d
 GEMINI_API_KEY=your_gemini_api_key_here
 OPENROUTER_API_KEY=your_openrouter_api_key_here
 
+# Google Places API (New) — destination photos
+GOOGLE_PLACES_API_KEY=your_google_places_api_key_here
+
 # Supabase — database backend
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_KEY=your_supabase_service_role_key_here
@@ -257,6 +278,7 @@ SUPABASE_SERVICE_KEY=your_supabase_service_role_key_here
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry duration (default `7d`)                    |
 | `GEMINI_API_KEY`         | Your Google Gemini API key (fallback for OpenRouter)            |
 | `OPENROUTER_API_KEY`     | Your OpenRouter API key — used for AI requests                  |
+| `GOOGLE_PLACES_API_KEY`  | Your Google Places API key — used for fetching destination photos (optional, graceful fallback) |
 | `SUPABASE_URL`           | Your Supabase project URL                                       |
 | `SUPABASE_SERVICE_KEY`   | Your Supabase service role key (found in Project Settings → API)  |
 
@@ -466,6 +488,7 @@ CREATE INDEX idx_itinerary_items_day ON itinerary_items(itinerary_day_id);
 | ------ | ------------------------------ | ---- | ------------------------------------- |
 | GET    | `/`                            | No   | List all destinations                 |
 | GET    | `/trending`                    | No   | List trending destinations            |
+| GET    | `/nearby?lat=&lng=`            | No   | Find nearby destinations by user location |
 | GET    | `/:id`                         | No   | Get destination by ID                 |
 | GET    | `/:id/reviews`                 | No   | Get reviews for a destination         |
 | POST   | `/:id/reviews`                 | Yes  | Add a review for a destination        |
@@ -762,6 +785,57 @@ curl -X POST http://localhost:5000/api/discovery/generate-itinerary \
 }
 ```
 
+### 9. Get Nearby Destinations
+
+Find tourist destinations near the user's current GPS location.
+
+```bash
+curl "http://localhost:5000/api/destinations/nearby?lat=-8.5069&lng=115.2625&radius=15&limit=5"
+```
+
+| Query Param | Type   | Required | Default | Description                  |
+| ----------- | ------ | -------- | ------- | ---------------------------- |
+| `lat`       | number | Yes      | —       | User's current latitude      |
+| `lng`       | number | Yes      | —       | User's current longitude     |
+| `radius`    | number | No       | `15`    | Search radius in km          |
+| `limit`     | number | No       | `5`     | Max number of results        |
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Found 5 nearby destination(s)",
+  "data": [
+    {
+      "id": "uuid-here",
+      "name": "Ubud Monkey Forest",
+      "latitude": -8.5185,
+      "longitude": 115.2587,
+      "rating_avg": 4.5,
+      "images": ["https://lh3.googleusercontent.com/..."],
+      "_distance_km": 1.42,
+      "categories": { "id": "uuid", "name": "Attraction", "icon_url": null }
+    }
+  ]
+}
+```
+
+> **How it works:** The API first checks the database for existing destinations within the radius (using bounding-box + Haversine distance). If fewer than `limit` results are found, it automatically fetches additional places from the Google Places API, saves them to the database (with photos), and returns the combined results. Subsequent requests to the same area will hit the database — no extra API calls needed.
+
+### 10. Backfill Missing Destination Images
+
+Run this one-off script to fetch Google Places photos for all destinations that have empty images:
+
+```bash
+node scripts/backfillTrendingImages.js
+```
+
+The script will:
+1. Query all active destinations with empty/null images
+2. Fetch a photo for each from Google Places API (with 300ms delay between requests)
+3. Update the database with the fetched photo URLs
+4. Skip destinations that already have images
+
 ---
 
 ## 🚀 Deploy to Vercel
@@ -813,6 +887,7 @@ In your Vercel project dashboard, go to **Settings → Environment Variables** a
 | `JWT_REFRESH_EXPIRES_IN` | `7d`                                     |
 | `GEMINI_API_KEY`         | Your Google Gemini API key               |
 | `OPENROUTER_API_KEY`     | Your OpenRouter API key                  |
+| `GOOGLE_PLACES_API_KEY`  | Your Google Places API key               |
 | `SUPABASE_URL`           | `https://your-project.supabase.co`       |
 | `SUPABASE_SERVICE_KEY`   | Your Supabase service role key           |
 | `NODE_ENV`               | `production`                             |

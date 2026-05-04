@@ -6,6 +6,7 @@ const ItineraryModel = require('../models/itineraryModel');
 const ItineraryDayModel = require('../models/itineraryDayModel');
 const ItineraryItemModel = require('../models/itineraryItemModel');
 const CategoryModel = require('../models/categoryModel');
+const { fetchPhotosForDestination } = require('./googlePlacesService');
 
 const itineraryService = {
     async create(data) {
@@ -71,6 +72,20 @@ const itineraryService = {
 
                     if (existingDest) {
                         destinationId = existingDest.id;
+
+                        // Backfill images if the existing destination has none
+                        const hasImages = Array.isArray(existingDest.images) && existingDest.images.length > 0;
+                        if (!hasImages) {
+                            console.log(`📷 [Discovery] Backfilling image for existing destination "${destData.destinationName}"...`);
+                            const backfillPhotos = await fetchPhotosForDestination(
+                                destData.destinationName,
+                                existingDest.area || destData.contactInfo?.location,
+                                1
+                            );
+                            if (backfillPhotos.length > 0) {
+                                await DestinationModel.update(existingDest.id, { images: backfillPhotos });
+                            }
+                        }
                     } else {
                         // Resolve category_id from Gemini's category string
                         let categoryId = null;
@@ -78,6 +93,13 @@ const itineraryService = {
                             const cat = await CategoryModel.findOrCreate(destData.category);
                             categoryId = cat ? cat.id : null;
                         }
+
+                        // Fetch real photo from Google Places API
+                        const photos = await fetchPhotosForDestination(
+                            destData.destinationName,
+                            destData.contactInfo?.location,
+                            1
+                        );
 
                         // Create new destination — map all Gemini fields
                         const newDestRow = {
@@ -94,6 +116,7 @@ const itineraryService = {
                             phone: destData.contactInfo?.phone || null,
                             website: destData.contactInfo?.website || null,
                             amenities: Array.isArray(destData.amenities) ? destData.amenities : [],
+                            images: photos,
                             rating_avg: destData.rating || null,
                             is_active: true,
                             is_trending: false,

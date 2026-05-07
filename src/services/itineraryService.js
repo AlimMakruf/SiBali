@@ -215,15 +215,39 @@ const itineraryService = {
         // 4. Update the destinations in database
         let updated = 0;
         let failed = 0;
+        let coverImageToSet = null;
         
         for (const result of results) {
             if (result.status === 'fulfilled' && result.value.photos.length > 0) {
                 await DestinationModel.update(result.value.id, {
                     images: result.value.photos,
                 });
+                if (!coverImageToSet) {
+                    coverImageToSet = result.value.photos[0];
+                }
                 updated++;
             } else {
                 failed++;
+            }
+        }
+        
+        // 5. Update itinerary cover image if not set
+        if (!itinerary.cover_image) {
+            if (!coverImageToSet) {
+                for (const day of itinerary.itinerary_days || []) {
+                    for (const item of day.itinerary_items || []) {
+                        const dest = item.destinations;
+                        if (dest && Array.isArray(dest.images) && dest.images.length > 0) {
+                            coverImageToSet = dest.images[0];
+                            break;
+                        }
+                    }
+                    if (coverImageToSet) break;
+                }
+            }
+            
+            if (coverImageToSet) {
+                await ItineraryModel.update(itineraryId, userId, { cover_image: coverImageToSet });
             }
         }
         

@@ -522,6 +522,7 @@ CREATE INDEX idx_itinerary_items_day ON itinerary_items(itinerary_day_id);
 | GET    | `/:id`                         | Yes  | Get itinerary details by ID           |
 | PUT    | `/:id`                         | Yes  | Update an itinerary                   |
 | DELETE | `/:id`                         | Yes  | Delete an itinerary                   |
+| POST   | `/:id/backfill-images`         | Yes  | Backfill images for all destinations  |
 | POST   | `/:id/days`                    | Yes  | Add a day to an itinerary             |
 | GET    | `/:id/days`                    | Yes  | Get days for an itinerary             |
 | DELETE | `/days/:dayId`                 | Yes  | Delete a day                          |

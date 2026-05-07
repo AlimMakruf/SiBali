@@ -18,6 +18,7 @@ router.get('/', itineraryController.getAll);
 router.get('/:id', itineraryController.getById);
 router.put('/:id', itineraryController.update);
 router.delete('/:id', itineraryController.delete);
+router.post('/:id/backfill-images', itineraryController.backfillImages);
 
 // Days
 router.post('/:id/days', itineraryController.addDay);

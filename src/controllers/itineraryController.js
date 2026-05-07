@@ -99,6 +99,14 @@ const itineraryController = {
             res.status(200).json({ success: true, message: 'Item deleted successfully' });
         } catch (error) { next(error); }
     },
+
+    /** POST /api/itineraries/:id/backfill-images */
+    async backfillImages(req, res, next) {
+        try {
+            const data = await itineraryService.backfillItineraryImages(req.params.id, req.user.id);
+            res.status(200).json({ success: true, message: data.message, data });
+        } catch (error) { next(error); }
+    },
 };
 
 module.exports = itineraryController;

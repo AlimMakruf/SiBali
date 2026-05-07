@@ -54,9 +54,8 @@ const itineraryService = {
             });
 
             // -------------------------------------------------------
-            // Phase A: Create days + destinations (without photos first)
+            // Phase A: Create days + destinations (collect photo queue)
             // -------------------------------------------------------
-            // Collect all destination entries that need photo fetching
             const photoFetchQueue = []; // { destinationId, name, area }
 
             for (const day of aiResult.days) {
@@ -72,31 +71,29 @@ const itineraryService = {
                     if (!destData || !destData.destinationName) continue;
 
                     let destinationId;
-                    // Check if destination exists
                     const existingDest = await DestinationModel.findByName(destData.destinationName);
 
                     if (existingDest) {
                         destinationId = existingDest.id;
 
-                        // Queue backfill if the existing destination has no images
+                        // Queue backfill if existing destination has no images
                         const hasImages = Array.isArray(existingDest.images) && existingDest.images.length > 0;
                         if (!hasImages) {
                             photoFetchQueue.push({
                                 destinationId: existingDest.id,
                                 name: destData.destinationName,
                                 area: existingDest.area || destData.contactInfo?.location,
-                                isBackfill: true,
                             });
                         }
                     } else {
-                        // Resolve category_id from Gemini's category string
+                        // Resolve category
                         let categoryId = null;
                         if (destData.category) {
                             const cat = await CategoryModel.findOrCreate(destData.category);
                             categoryId = cat ? cat.id : null;
                         }
 
-                        // Create new destination first WITHOUT images (we'll batch-fetch later)
+                        // Create destination WITHOUT images first
                         const newDestRow = {
                             name: destData.destinationName,
                             category_id: categoryId,
@@ -111,7 +108,7 @@ const itineraryService = {
                             phone: destData.contactInfo?.phone || null,
                             website: destData.contactInfo?.website || null,
                             amenities: Array.isArray(destData.amenities) ? destData.amenities : [],
-                            images: [], // Placeholder — will be filled in Phase B
+                            images: [],
                             rating_avg: destData.rating || null,
                             is_active: true,
                             is_trending: false,
@@ -119,12 +116,10 @@ const itineraryService = {
                         const createdDest = await DestinationModel.create(newDestRow);
                         destinationId = createdDest.id;
 
-                        // Queue for photo fetching
                         photoFetchQueue.push({
                             destinationId: createdDest.id,
                             name: destData.destinationName,
                             area: destData.contactInfo?.location,
-                            isBackfill: false,
                         });
                     }
 
@@ -147,10 +142,10 @@ const itineraryService = {
                 total_destinations: totalDestinations,
             });
 
-            // Return itinerary + pending photo queue
-            // The controller will handle photo backfill after sending the response
-            const itinerary = await this.getById(draftItinerary.id, userId);
-            return { itinerary, photoFetchQueue };
+            // Return itinerary immediately — photos are fetched via
+            // a separate POST /api/itineraries/:id/backfill-images call
+            // from the frontend (Vercel Hobby 10s limit can't fit photos here)
+            return await this.getById(draftItinerary.id, userId);
 
         } catch (error) {
             // Mark as failed if anything goes wrong
@@ -161,55 +156,79 @@ const itineraryService = {
             throw error;
         }
     },
-
     /**
-     * Backfill photos for a batch of destinations.
-     * Called by the controller after sending the API response.
-     *
-     * @param {object[]} queue - Array of { destinationId, name, area }
-     * @returns {{ success: number, failed: number }}
+     * Backfill missing images for all destinations in a specific itinerary.
+     * This is intended to be called explicitly by the frontend after generating an itinerary.
+     * 
+     * @param {string} itineraryId 
+     * @param {string} userId 
+     * @returns {object} Status of the backfill operation
      */
-    async backfillPhotos(queue) {
+    async backfillItineraryImages(itineraryId, userId) {
         const DestinationModel = require('../models/destinationModel');
-        console.log(`📷 [Backfill] Starting photo fetch for ${queue.length} destination(s)...`);
-
-        try {
-            const results = await Promise.allSettled(
-                queue.map(async (entry) => {
-                    // Attempt 1: with area
-                    let photos = await fetchPhotosForDestination(entry.name, entry.area, 1);
-
-                    // Attempt 2: without area
-                    if (photos.length === 0) {
-                        photos = await fetchPhotosForDestination(entry.name, null, 1);
+        
+        // 1. Get the itinerary to verify ownership and get destinations
+        const itinerary = await this.getById(itineraryId, userId);
+        
+        // 2. Extract all unique destinations that need images
+        const destinationsToBackfill = new Map(); // Use Map to deduplicate by ID
+        
+        for (const day of itinerary.itinerary_days || []) {
+            for (const item of day.itinerary_items || []) {
+                const dest = item.destinations;
+                if (dest) {
+                    const hasImages = Array.isArray(dest.images) && dest.images.length > 0;
+                    if (!hasImages) {
+                        destinationsToBackfill.set(dest.id, {
+                            id: dest.id,
+                            name: dest.name,
+                            area: dest.area
+                        });
                     }
-
-                    return { ...entry, photos };
-                })
-            );
-
-            let success = 0;
-            let failed = 0;
-
-            for (const result of results) {
-                if (result.status === 'fulfilled' && result.value.photos.length > 0) {
-                    await DestinationModel.update(result.value.destinationId, {
-                        images: result.value.photos,
-                    });
-                    success++;
-                } else {
-                    const entry = result.status === 'fulfilled' ? result.value : {};
-                    console.warn(`⚠️ [Backfill] No photo for "${entry?.name || 'unknown'}"`);
-                    failed++;
                 }
             }
-
-            console.log(`📷 [Backfill] Complete: ${success} success, ${failed} failed`);
-            return { success, failed };
-        } catch (err) {
-            console.error('❌ [Backfill] Photo backfill crashed:', err.message);
-            return { success: 0, failed: queue.length };
         }
+        
+        const queue = Array.from(destinationsToBackfill.values());
+        
+        if (queue.length === 0) {
+            return { message: 'All destinations already have images', updated: 0, failed: 0 };
+        }
+        
+        console.log(`📷 [Backfill API] Fetching photos for ${queue.length} destination(s) in itinerary ${itineraryId}...`);
+        
+        // 3. Fetch photos in parallel
+        const results = await Promise.allSettled(
+            queue.map(async (entry) => {
+                // Attempt 1: with area
+                let photos = await fetchPhotosForDestination(entry.name, entry.area, 1);
+                
+                // Attempt 2: without area
+                if (photos.length === 0) {
+                    photos = await fetchPhotosForDestination(entry.name, null, 1);
+                }
+                
+                return { ...entry, photos };
+            })
+        );
+        
+        // 4. Update the destinations in database
+        let updated = 0;
+        let failed = 0;
+        
+        for (const result of results) {
+            if (result.status === 'fulfilled' && result.value.photos.length > 0) {
+                await DestinationModel.update(result.value.id, {
+                    images: result.value.photos,
+                });
+                updated++;
+            } else {
+                failed++;
+            }
+        }
+        
+        console.log(`📷 [Backfill API] Complete for itinerary ${itineraryId}: ${updated} success, ${failed} failed`);
+        return { message: 'Backfill completed', updated, failed };
     },
 
     async getByUser(userId) {

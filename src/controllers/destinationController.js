@@ -98,6 +98,24 @@ const destinationController = {
             next(error);
         }
     },
+
+    /**
+     * POST /api/destinations/:id/view
+     * Track a page view for a destination (public, no auth required).
+     */
+    async trackView(req, res, next) {
+        try {
+            const data = await destinationService.trackView(req.params.id);
+
+            res.status(200).json({
+                success: true,
+                message: 'View tracked successfully',
+                data,
+            });
+        } catch (error) {
+            next(error);
+        }
+    },
 };
 
 module.exports = destinationController;

@@ -53,7 +53,12 @@ const itineraryService = {
                 ai_status: 'done',
             });
 
-            // 4. Process Days and Destinations
+            // -------------------------------------------------------
+            // Phase A: Create days + destinations (without photos first)
+            // -------------------------------------------------------
+            // Collect all destination entries that need photo fetching
+            const photoFetchQueue = []; // { destinationId, name, area }
+
             for (const day of aiResult.days) {
                 // Create Day
                 const itineraryDay = await ItineraryDayModel.create(
@@ -73,18 +78,15 @@ const itineraryService = {
                     if (existingDest) {
                         destinationId = existingDest.id;
 
-                        // Backfill images if the existing destination has none
+                        // Queue backfill if the existing destination has no images
                         const hasImages = Array.isArray(existingDest.images) && existingDest.images.length > 0;
                         if (!hasImages) {
-                            console.log(`📷 [Discovery] Backfilling image for existing destination "${destData.destinationName}"...`);
-                            const backfillPhotos = await fetchPhotosForDestination(
-                                destData.destinationName,
-                                existingDest.area || destData.contactInfo?.location,
-                                1
-                            );
-                            if (backfillPhotos.length > 0) {
-                                await DestinationModel.update(existingDest.id, { images: backfillPhotos });
-                            }
+                            photoFetchQueue.push({
+                                destinationId: existingDest.id,
+                                name: destData.destinationName,
+                                area: existingDest.area || destData.contactInfo?.location,
+                                isBackfill: true,
+                            });
                         }
                     } else {
                         // Resolve category_id from Gemini's category string
@@ -94,14 +96,7 @@ const itineraryService = {
                             categoryId = cat ? cat.id : null;
                         }
 
-                        // Fetch real photo from Google Places API
-                        const photos = await fetchPhotosForDestination(
-                            destData.destinationName,
-                            destData.contactInfo?.location,
-                            1
-                        );
-
-                        // Create new destination — map all Gemini fields
+                        // Create new destination first WITHOUT images (we'll batch-fetch later)
                         const newDestRow = {
                             name: destData.destinationName,
                             category_id: categoryId,
@@ -116,13 +111,21 @@ const itineraryService = {
                             phone: destData.contactInfo?.phone || null,
                             website: destData.contactInfo?.website || null,
                             amenities: Array.isArray(destData.amenities) ? destData.amenities : [],
-                            images: photos,
+                            images: [], // Placeholder — will be filled in Phase B
                             rating_avg: destData.rating || null,
                             is_active: true,
                             is_trending: false,
                         };
                         const createdDest = await DestinationModel.create(newDestRow);
                         destinationId = createdDest.id;
+
+                        // Queue for photo fetching
+                        photoFetchQueue.push({
+                            destinationId: createdDest.id,
+                            name: destData.destinationName,
+                            area: destData.contactInfo?.location,
+                            isBackfill: false,
+                        });
                     }
 
                     // Create Itinerary Item
@@ -137,6 +140,46 @@ const itineraryService = {
                     orderInDay++;
                     totalDestinations++;
                 }
+            }
+
+            // -------------------------------------------------------
+            // Phase B: Fetch ALL photos in parallel (much faster)
+            // -------------------------------------------------------
+            if (photoFetchQueue.length > 0) {
+                console.log(`📷 [Discovery] Fetching photos for ${photoFetchQueue.length} destination(s) in parallel...`);
+
+                const photoResults = await Promise.allSettled(
+                    photoFetchQueue.map(async (entry) => {
+                        // First attempt
+                        let photos = await fetchPhotosForDestination(entry.name, entry.area, 1);
+
+                        // Retry with simplified query if first attempt returned empty
+                        if (photos.length === 0) {
+                            console.log(`🔄 [Discovery] Retry photo fetch for "${entry.name}" (without area)...`);
+                            photos = await fetchPhotosForDestination(entry.name, null, 1);
+                        }
+
+                        return { ...entry, photos };
+                    })
+                );
+
+                // Update destinations with fetched photos
+                let successCount = 0;
+                let failCount = 0;
+                for (const result of photoResults) {
+                    if (result.status === 'fulfilled' && result.value.photos.length > 0) {
+                        await DestinationModel.update(result.value.destinationId, {
+                            images: result.value.photos,
+                        });
+                        successCount++;
+                    } else {
+                        const entry = result.status === 'fulfilled' ? result.value : result.reason;
+                        console.warn(`⚠️ [Discovery] No photo found for "${entry?.name || 'unknown'}"${result.status === 'rejected' ? ': ' + result.reason?.message : ''}`);
+                        failCount++;
+                    }
+                }
+
+                console.log(`📷 [Discovery] Photo fetch complete: ${successCount} success, ${failCount} failed`);
             }
 
             // Update final total destinations

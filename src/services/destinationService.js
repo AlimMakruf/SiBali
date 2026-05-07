@@ -21,6 +21,24 @@ const destinationService = {
         return destination;
     },
 
+    /**
+     * Increment view count for a destination.
+     * @param {string} id
+     * @returns {number} new view_count
+     */
+    async trackView(id) {
+        // Verify destination exists first
+        const destination = await DestinationModel.findById(id);
+        if (!destination) {
+            const err = new Error('Destination not found');
+            err.statusCode = 404;
+            throw err;
+        }
+
+        const newCount = await DestinationModel.incrementViewCount(id);
+        return { view_count: newCount };
+    },
+
     async getTrending(limit) {
         return DestinationModel.getTrending(limit);
     },

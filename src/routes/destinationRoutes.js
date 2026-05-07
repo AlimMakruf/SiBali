@@ -25,6 +25,9 @@ router.get('/nearby', destinationController.getNearby);
 // GET /api/destinations/:id
 router.get('/:id', destinationController.getById);
 
+// POST /api/destinations/:id/view (public — no auth needed)
+router.post('/:id/view', destinationController.trackView);
+
 // GET /api/destinations/:id/reviews
 router.get('/:id/reviews', reviewController.getByDestination);
 

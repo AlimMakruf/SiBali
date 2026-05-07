@@ -339,6 +339,7 @@ CREATE TABLE destinations (
     images JSONB DEFAULT '[]',
     rating_avg NUMERIC(2,1),
     review_count INTEGER DEFAULT 0,
+    view_count INTEGER DEFAULT 0,
     is_trending BOOLEAN DEFAULT FALSE,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -490,6 +491,7 @@ CREATE INDEX idx_itinerary_items_day ON itinerary_items(itinerary_day_id);
 | GET    | `/trending`                    | No   | List trending destinations            |
 | GET    | `/nearby?lat=&lng=`            | No   | Find nearby destinations by user location |
 | GET    | `/:id`                         | No   | Get destination by ID                 |
+| POST   | `/:id/view`                    | No   | Track a page view for a destination   |
 | GET    | `/:id/reviews`                 | No   | Get reviews for a destination         |
 | POST   | `/:id/reviews`                 | Yes  | Add a review for a destination        |
 | POST   | `/:id/save`                    | Yes  | Save destination                      |

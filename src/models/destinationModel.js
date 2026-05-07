@@ -49,6 +49,21 @@ const DestinationModel = {
         if (error) throw error;
         return data;
     },
+
+    /**
+     * Increment the view count for a destination by 1.
+     * Uses a Postgres RPC function for atomic increment.
+     * @param {string} id
+     * @returns {number} new view_count value
+     */
+    async incrementViewCount(id) {
+        const { data, error } = await supabase.rpc('increment_destination_view', {
+            dest_id: id,
+        });
+
+        if (error) throw error;
+        return data;
+    },
     /**
      * Find a destination by exact name (case-insensitive).
      * @param {string} name

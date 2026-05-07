@@ -142,53 +142,15 @@ const itineraryService = {
                 }
             }
 
-            // -------------------------------------------------------
-            // Phase B: Fetch ALL photos in parallel (much faster)
-            // -------------------------------------------------------
-            if (photoFetchQueue.length > 0) {
-                console.log(`📷 [Discovery] Fetching photos for ${photoFetchQueue.length} destination(s) in parallel...`);
-
-                const photoResults = await Promise.allSettled(
-                    photoFetchQueue.map(async (entry) => {
-                        // First attempt
-                        let photos = await fetchPhotosForDestination(entry.name, entry.area, 1);
-
-                        // Retry with simplified query if first attempt returned empty
-                        if (photos.length === 0) {
-                            console.log(`🔄 [Discovery] Retry photo fetch for "${entry.name}" (without area)...`);
-                            photos = await fetchPhotosForDestination(entry.name, null, 1);
-                        }
-
-                        return { ...entry, photos };
-                    })
-                );
-
-                // Update destinations with fetched photos
-                let successCount = 0;
-                let failCount = 0;
-                for (const result of photoResults) {
-                    if (result.status === 'fulfilled' && result.value.photos.length > 0) {
-                        await DestinationModel.update(result.value.destinationId, {
-                            images: result.value.photos,
-                        });
-                        successCount++;
-                    } else {
-                        const entry = result.status === 'fulfilled' ? result.value : result.reason;
-                        console.warn(`⚠️ [Discovery] No photo found for "${entry?.name || 'unknown'}"${result.status === 'rejected' ? ': ' + result.reason?.message : ''}`);
-                        failCount++;
-                    }
-                }
-
-                console.log(`📷 [Discovery] Photo fetch complete: ${successCount} success, ${failCount} failed`);
-            }
-
             // Update final total destinations
             await ItineraryModel.update(draftItinerary.id, userId, {
                 total_destinations: totalDestinations,
             });
 
-            // Return the full updated itinerary
-            return await this.getById(draftItinerary.id, userId);
+            // Return itinerary + pending photo queue
+            // The controller will handle photo backfill after sending the response
+            const itinerary = await this.getById(draftItinerary.id, userId);
+            return { itinerary, photoFetchQueue };
 
         } catch (error) {
             // Mark as failed if anything goes wrong
@@ -197,6 +159,56 @@ const itineraryService = {
                 title: 'Itinerary Generation Failed',
             });
             throw error;
+        }
+    },
+
+    /**
+     * Backfill photos for a batch of destinations.
+     * Called by the controller after sending the API response.
+     *
+     * @param {object[]} queue - Array of { destinationId, name, area }
+     * @returns {{ success: number, failed: number }}
+     */
+    async backfillPhotos(queue) {
+        const DestinationModel = require('../models/destinationModel');
+        console.log(`📷 [Backfill] Starting photo fetch for ${queue.length} destination(s)...`);
+
+        try {
+            const results = await Promise.allSettled(
+                queue.map(async (entry) => {
+                    // Attempt 1: with area
+                    let photos = await fetchPhotosForDestination(entry.name, entry.area, 1);
+
+                    // Attempt 2: without area
+                    if (photos.length === 0) {
+                        photos = await fetchPhotosForDestination(entry.name, null, 1);
+                    }
+
+                    return { ...entry, photos };
+                })
+            );
+
+            let success = 0;
+            let failed = 0;
+
+            for (const result of results) {
+                if (result.status === 'fulfilled' && result.value.photos.length > 0) {
+                    await DestinationModel.update(result.value.destinationId, {
+                        images: result.value.photos,
+                    });
+                    success++;
+                } else {
+                    const entry = result.status === 'fulfilled' ? result.value : {};
+                    console.warn(`⚠️ [Backfill] No photo for "${entry?.name || 'unknown'}"`);
+                    failed++;
+                }
+            }
+
+            console.log(`📷 [Backfill] Complete: ${success} success, ${failed} failed`);
+            return { success, failed };
+        } catch (err) {
+            console.error('❌ [Backfill] Photo backfill crashed:', err.message);
+            return { success: 0, failed: queue.length };
         }
     },
 

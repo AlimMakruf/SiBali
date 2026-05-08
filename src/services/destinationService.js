@@ -48,6 +48,27 @@ const destinationService = {
     },
 
     /**
+     * Check if coordinates are within Bali's approximate bounding box.
+     * @param {number} lat 
+     * @param {number} lng 
+     * @returns {boolean}
+     */
+    isWithinBali(lat, lng) {
+        const BALI_BOUNDS = {
+            north: -8.05,
+            south: -8.85,
+            west: 114.43,
+            east: 115.71
+        };
+        return (
+            lat >= BALI_BOUNDS.south &&
+            lat <= BALI_BOUNDS.north &&
+            lng >= BALI_BOUNDS.west &&
+            lng <= BALI_BOUNDS.east
+        );
+    },
+
+    /**
      * Get nearby destinations based on user's current location.
      * 1) Query DB for existing nearby destinations (within radius)
      * 2) If fewer than limit found, fetch remaining from Google Places
@@ -60,6 +81,12 @@ const destinationService = {
      * @returns {object[]}
      */
     async getNearby(lat, lng, radiusKm = 15, limit = 5) {
+        // 0. Strict to Bali only
+        if (!this.isWithinBali(lat, lng)) {
+            console.log(`📍 [Nearby] Coordinates (${lat}, ${lng}) are outside Bali. Returning empty.`);
+            return [];
+        }
+
         // 1. Query DB for existing nearby destinations
         const dbNearby = await DestinationModel.findNearby(lat, lng, radiusKm, limit);
 

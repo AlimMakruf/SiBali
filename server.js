@@ -35,65 +35,8 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/', (req, res) => {
     res.json({
         success: true,
-        message: '🌴 SIBALI API — Bali Tourism Recommendation System',
-        version: '2.0.0',
-        endpoints: {
-            auth: {
-                register: 'POST /api/auth/register',
-                login: 'POST /api/auth/login',
-                refreshToken: 'POST /api/auth/refresh-token',
-                me: 'GET  /api/auth/me',
-                logout: 'POST /api/auth/logout',
-            },
-            categories: {
-                list: 'GET  /api/categories',
-            },
-            interests: {
-                list: 'GET  /api/interests',
-            },
-            destinations: {
-                list: 'GET  /api/destinations',
-                trending: 'GET  /api/destinations/trending',
-                detail: 'GET  /api/destinations/:id',
-                reviews: 'GET  /api/destinations/:id/reviews',
-                addReview: 'POST /api/destinations/:id/reviews',
-                save: 'POST /api/destinations/:id/save',
-                unsave: 'DELETE /api/destinations/:id/save',
-                markVisited: 'POST /api/destinations/:id/visited',
-                unmarkVisited: 'DELETE /api/destinations/:id/visited',
-            },
-            users: {
-                profile: 'GET  /api/users/me/profile',
-                updateProfile: 'PUT  /api/users/me/profile',
-                setInterests: 'POST /api/users/me/interests',
-                getInterests: 'GET  /api/users/me/interests',
-                stats: 'GET  /api/users/me/stats',
-                saved: 'GET  /api/users/me/saved',
-                visited: 'GET  /api/users/me/visited',
-                reviews: 'GET  /api/users/me/reviews',
-                deleteReview: 'DELETE /api/users/reviews/:id',
-            },
-            itineraries: {
-                create: 'POST /api/itineraries',
-                list: 'GET  /api/itineraries',
-                detail: 'GET  /api/itineraries/:id',
-                update: 'PUT  /api/itineraries/:id',
-                delete: 'DELETE /api/itineraries/:id',
-                addDay: 'POST /api/itineraries/:id/days',
-                getDays: 'GET  /api/itineraries/:id/days',
-                deleteDay: 'DELETE /api/itineraries/days/:dayId',
-                addItem: 'POST /api/itineraries/days/:dayId/items',
-                updateItem: 'PUT  /api/itineraries/items/:itemId',
-                deleteItem: 'DELETE /api/itineraries/items/:itemId',
-            },
-            discovery: {
-                generateItinerary: 'POST /api/discovery/generate-itinerary',
-            },
-            recommendations: {
-                trending: 'GET  /api/recommendations/trending',
-                search: 'POST /api/recommendations/search',
-            },
-        },
+        message: '🌴 SIBALI API — Bali Tourism Recommendation System is running.',
+        version: '2.0.0'
     });
 });
 
